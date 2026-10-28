@@ -1,7 +1,7 @@
 'use strict';
 // Runs dist/app.js in a vm with a fake DOM, a fake camera and a fake pose tracker whose landmarks the test controls.
 const fs = require('fs'), vm = require('vm'), path = require('path');
-const { PoseSwingDetector, POSE_POINTS } = require('../dist/pose-swing.js'), { SwingCalibration } = require('../dist/calibration.js'), { RemoteLink, PeerLink, parseRoom } = require('../dist/remote.js'), { gnomeLook, drawGnome, gnomePose } = require('../dist/gnome.js');
+const { PoseSwingDetector, POSE_POINTS } = require('../dist/pose-swing.js'), { SwingCalibration } = require('../dist/calibration.js'), { RemoteLink, PeerLink, parseRoom } = require('../dist/remote.js'), { gnomeLook, drawGnome, gnomePose, GNOME_TIMING, EXERCISE_WEIGHT } = require('../dist/gnome.js');
 const noop = () => { };
 module.exports = function harness({ loadModel, rtc, Peer, search = '', store = {}, fetchImpl, EventSource } = {}) {
  const h = { listeners: {}, time: 0, stopped: 0, requests: [], els: {}, landmarks: null, loads: 0, frame: 0 };
@@ -16,7 +16,7 @@ module.exports = function harness({ loadModel, rtc, Peer, search = '', store = {
   detect() { this.stats.processed++; if (h.detectError) { this.stats.errors++; throw new Error('inference') } return { landmarks: h.landmarks, ms: 1 } }
   close() { this.landmarker = null }
  }
- const sandbox = { PoseSwingDetector, POSE_POINTS, gnomeLook, drawGnome, gnomePose, localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v) } }, confirm: () => true, EventSource: EventSource || class { constructor() { this.closed = true } close() { } }, fetch: (...a) => h.fetchImpl(...a), crypto: require('crypto').webcrypto, SwingCalibration, PoseTracker: FakeTracker, URLSearchParams, location: { search, hash: '', pathname: '/', origin: 'http://test' }, history: { replaceState: noop }, setTimeout: (f, ms) => { const t = setTimeout(f, ms); t.unref?.(); return t }, clearTimeout, setInterval: () => 0, qrcode: require('../dist/vendor/qr/qrcode.js'),
+ const sandbox = { PoseSwingDetector, POSE_POINTS, gnomeLook, drawGnome, gnomePose, GNOME_TIMING, EXERCISE_WEIGHT, localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v) } }, confirm: () => true, EventSource: EventSource || class { constructor() { this.closed = true } close() { } }, fetch: (...a) => h.fetchImpl(...a), crypto: require('crypto').webcrypto, SwingCalibration, PoseTracker: FakeTracker, URLSearchParams, location: { search, hash: '', pathname: '/', origin: 'http://test' }, history: { replaceState: noop }, setTimeout: (f, ms) => { const t = setTimeout(f, ms); t.unref?.(); return t }, clearTimeout, setInterval: () => 0, qrcode: require('../dist/vendor/qr/qrcode.js'),
   Peer, PeerLink: class extends PeerLink { constructor(h, o) { super(h, { Peer, retryMs: 5, timeoutMs: 400, ...o }) } },
   parseRoom, RemoteLink: class extends RemoteLink { constructor(h, o) { super(h, { rtc, gatherMs: 0, ...o }) } },
   document: { hidden: false, head: { appendChild: noop }, getElementById: el, createElement: () => el('sample'), querySelector: () => el('main'), addEventListener: (t, f) => { const prev = h.listeners[t]; h.listeners[t] = prev ? (...a) => { prev(...a); f(...a) } : f }, body: { classList: { add: noop, remove: noop, toggle: noop } } },

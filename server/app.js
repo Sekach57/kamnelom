@@ -7,7 +7,11 @@ const EXERCISES = ['swing', 'squat', 'pushup'], ROCK = 20, MAX_BODY = 4096;
 const rid = (prefix, bytes = 8) => prefix + Array.from(crypto.randomBytes(bytes), b => (b % 36).toString(36)).join('');
 const hash = s => crypto.createHash('sha256').update(s).digest('hex');
 const clean = (text, max) => String(text ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
-const progress = reps => ({ reps, rocks: Math.floor(reps / ROCK), hp: ROCK - (reps % ROCK) });
+// Difficulty: damage to the boulder per rep. Squats are the easiest, push-ups the hardest. Points = reps x weight.
+const WEIGHT = { swing: 2, squat: 1, pushup: 3 };
+const weightSql = `CASE s.exercise WHEN 'swing' THEN ${WEIGHT.swing} WHEN 'squat' THEN ${WEIGHT.squat} ELSE ${WEIGHT.pushup} END`;
+const stage = (points, reps) => ({ reps, points, rocks: Math.floor(points / ROCK), hp: ROCK - (points % ROCK) });
+const progress = (reps, exercise) => stage(reps * WEIGHT[exercise], reps);
 
 function createApp(options = {}) {
  const o = { staticDir: null, dbPath: ':memory:', origins: [], allowAny: false, trustProxy: false, now: () => Date.now(), repsPerSecond: 4, repBurst: 12, ...options };
@@ -27,7 +31,7 @@ function createApp(options = {}) {
   addReps: db.prepare('INSERT INTO stats (player_id, exercise, reps, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (player_id, exercise) DO UPDATE SET reps = reps + excluded.reps, updated_at = excluded.updated_at'),
   stats: db.prepare('SELECT exercise, reps FROM stats WHERE player_id = ?'),
   board: db.prepare('SELECT p.id, p.nick, s.reps FROM stats s JOIN players p ON p.id = s.player_id WHERE s.exercise = ? AND s.reps > 0 ORDER BY s.reps DESC, p.created_at ASC LIMIT ?'),
-  boardTotal: db.prepare("SELECT p.id, p.nick, SUM(s.reps) AS reps, SUM(CASE WHEN s.exercise = 'swing' THEN s.reps ELSE 0 END) AS swing, SUM(CASE WHEN s.exercise = 'squat' THEN s.reps ELSE 0 END) AS squat, SUM(CASE WHEN s.exercise = 'pushup' THEN s.reps ELSE 0 END) AS pushup FROM stats s JOIN players p ON p.id = s.player_id GROUP BY p.id HAVING reps > 0 ORDER BY reps DESC, p.created_at ASC LIMIT ?"),
+  boardTotal: db.prepare(`SELECT p.id, p.nick, SUM(s.reps) AS reps, SUM(s.reps * ${weightSql}) AS points, SUM(CASE WHEN s.exercise = 'swing' THEN s.reps ELSE 0 END) AS swing, SUM(CASE WHEN s.exercise = 'squat' THEN s.reps ELSE 0 END) AS squat, SUM(CASE WHEN s.exercise = 'pushup' THEN s.reps ELSE 0 END) AS pushup FROM stats s JOIN players p ON p.id = s.player_id GROUP BY p.id HAVING reps > 0 ORDER BY points DESC, p.created_at ASC LIMIT ?`),
   addGroup: db.prepare('INSERT INTO groups (id, name, goal, owner, created_at) VALUES (?, ?, ?, ?, ?)'),
   group: db.prepare('SELECT * FROM groups WHERE id = ?'),
   join: db.prepare('INSERT OR IGNORE INTO group_members (group_id, player_id, joined_at) VALUES (?, ?, ?)'),
@@ -57,14 +61,14 @@ function createApp(options = {}) {
   if (!p || a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw err(401, 'unauthorized', 'Неверный секрет.');
   return p;
  }
- const profile = p => { const stats = {}; for (const e of EXERCISES) stats[e] = progress(0); for (const s of q.stats.all(p.id)) stats[s.exercise] = progress(s.reps); return { id: p.id, nick: p.nick, stats, groups: q.myGroups.all(p.id) } };
+ const profile = p => { const stats = {}; for (const e of EXERCISES) stats[e] = progress(0, e); for (const s of q.stats.all(p.id)) stats[s.exercise] = progress(s.reps, s.exercise); return { id: p.id, nick: p.nick, stats, groups: q.myGroups.all(p.id) } };
 
  // ---- groups ----
  const streams = new Map(); // groupId -> Set(res)
  function groupState(id) {
   const g = q.group.get(id); if (!g) throw err(404, 'not_found', 'Группа не найдена.');
-  const members = q.members.all(id).map(m => ({ id: m.id, nick: m.nick, counts: { swing: 0, squat: 0, pushup: 0 }, total: 0 })), by = Object.fromEntries(members.map(m => [m.id, m]));
-  let total = 0; for (const r of q.groupReps.all(id)) { const m = by[r.player_id]; if (m && EXERCISES.includes(r.exercise)) { m.counts[r.exercise] += r.reps; m.total += r.reps; total += r.reps } }
+  const members = q.members.all(id).map(m => ({ id: m.id, nick: m.nick, counts: { swing: 0, squat: 0, pushup: 0 }, reps: 0, total: 0 })), by = Object.fromEntries(members.map(m => [m.id, m]));
+  let total = 0; for (const r of q.groupReps.all(id)) { const m = by[r.player_id]; if (m && EXERCISES.includes(r.exercise)) { m.counts[r.exercise] += r.reps; m.reps += r.reps; m.total += r.reps * WEIGHT[r.exercise]; total += r.reps * WEIGHT[r.exercise] } }
   return { id: g.id, name: g.name, goal: g.goal, total, done: total >= g.goal, owner: g.owner, members: members.sort((a, b) => b.total - a.total), now: o.now() };
  }
  const broadcast = id => { const set = streams.get(id); if (!set || !set.size) return; const data = `data: ${JSON.stringify(groupState(id))}\n\n`; for (const res of set) res.write(data) };
@@ -89,7 +93,7 @@ function createApp(options = {}) {
   const p = auth(req); limit('reps:' + p.id, 60, 60e3);
   const exercise = body.exercise, n = Number(body.n), seq = Number(body.seq);
   if (!EXERCISES.includes(exercise) || !Number.isInteger(n) || n < 1 || n > 200 || !Number.isInteger(seq) || seq < 1) throw err(400, 'bad_request', 'Некорректный запрос.');
-  if (seq <= p.last_seq) return { duplicate: true, ...progress(q.stats.all(p.id).find(s => s.exercise === exercise)?.reps || 0) };
+  if (seq <= p.last_seq) return { duplicate: true, ...progress(q.stats.all(p.id).find(s => s.exercise === exercise)?.reps || 0, exercise) };
   // Plausibility: a few reps per second at most, with a small burst allowance. The excess is dropped, not an error.
   const t = o.now(), elapsed = Math.min((t - (p.last_rep_at || t - 60e3)) / 1000, 600), allowed = Math.floor(elapsed * o.repsPerSecond + o.repBurst), add = Math.min(n, allowed);
   q.touch.run(seq, t, p.id); let group = null;
@@ -98,18 +102,18 @@ function createApp(options = {}) {
    if (body.groupId) { const gid = String(body.groupId); if (q.isMember.get(gid, p.id)) { q.addGroupReps.run(gid, p.id, exercise, add); group = gid } }
   }
   if (group) broadcast(group);
-  return { applied: add, dropped: n - add, ...progress(q.stats.all(p.id).find(s => s.exercise === exercise)?.reps || 0) };
+  return { applied: add, dropped: n - add, ...progress(q.stats.all(p.id).find(s => s.exercise === exercise)?.reps || 0, exercise) };
  });
  route('GET', '/api/leaderboard', (req, body, url) => {
   limit('board:' + clientKey(req), 120, 60e3);
   const exercise = url.searchParams.get('exercise') || 'total', lim = Math.max(1, Math.min(100, Number(url.searchParams.get('limit')) || 50));
   const rows = exercise === 'total' ? q.boardTotal.all(lim) : EXERCISES.includes(exercise) ? q.board.all(exercise, lim) : (() => { throw err(400, 'bad_exercise', 'Неизвестное упражнение.') })();
-  return { exercise, rows: rows.map((r, i) => ({ rank: i + 1, id: r.id, nick: r.nick, ...progress(Number(r.reps)), ...(exercise === 'total' ? { by: { swing: progress(Number(r.swing)), squat: progress(Number(r.squat)), pushup: progress(Number(r.pushup)) } } : {}) })) };
+  return { exercise, rows: rows.map((r, i) => ({ rank: i + 1, id: r.id, nick: r.nick, ...(exercise === 'total' ? { ...stage(Number(r.points), Number(r.reps)), by: { swing: progress(Number(r.swing), 'swing'), squat: progress(Number(r.squat), 'squat'), pushup: progress(Number(r.pushup), 'pushup') } } : progress(Number(r.reps), exercise)) })) };
  });
  route('GET', '/api/players/:id', (req, body, url, params) => { const p = q.player.get(params.id); if (!p) throw err(404, 'not_found', 'Игрок не найден.'); const { groups, ...pub } = profile(p); return pub });
  route('POST', '/api/groups', (req, body) => {
   const p = auth(req); limit('mkgroup:' + p.id, 10, 3600e3);
-  const name = clean(body.name, 40) || 'Башня Камнелома', goal = Math.max(50, Math.min(100000, Math.round(Number(body.goal) || 500))), id = rid('g-', 8), t = o.now();
+  const name = clean(body.name, 40) || 'Башня Камнелома', goal = Math.max(50, Math.min(100000, Math.round(Number(body.goal) || 500))) , id = rid('g-', 8), t = o.now();
   q.addGroup.run(id, name, goal, p.id, t); q.join.run(id, p.id, t); return groupState(id);
  });
  route('POST', '/api/groups/:id/join', (req, body, url, params) => { const p = auth(req); limit('join:' + p.id, 30, 3600e3); if (!q.group.get(params.id)) throw err(404, 'not_found', 'Группа не найдена.'); if (q.memberCount.get(params.id).n >= 24 && !q.isMember.get(params.id, p.id)) throw err(409, 'full', 'В группе уже 24 гнома.'); q.join.run(params.id, p.id, o.now()); broadcast(params.id); return groupState(params.id) });
@@ -156,4 +160,4 @@ function createApp(options = {}) {
  server.on('close', () => { clearInterval(sweep); db.close() });
  return { server, db, close: () => new Promise(r => { for (const set of streams.values()) for (const res of set) res.end(); server.close(() => r()); server.closeAllConnections?.() }) };
 }
-module.exports = { createApp, progress, ROCK, EXERCISES };
+module.exports = { createApp, progress, ROCK, EXERCISES, WEIGHT };

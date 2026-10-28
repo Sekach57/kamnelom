@@ -13,7 +13,7 @@ const kinds = { squat: { make: v => squatSkeleton({ drop: -v }), up: 0, down: -.
   let t0 = h.time; for (let i = 0; i < 200 && run('calibration.state') === 'checking'; i++) { h.landmarks = k.make(cos(h.time - t0, k.period, k.up, k.down)); h.step() }
   assert.equal(run('calibration.state'), 'success', name + ' calibration'); assert.equal(run('count'), 0); h.landmarks = k.make(k.up); h.advance(1800); assert.equal(run('mode'), 'camera');
   t0 = h.time; h.advance(k.period * 4 + 200, t => k.make(cos(t - t0, k.period, k.up, k.down))); h.landmarks = k.make(k.up); h.advance(600);
-  assert.equal(run('count'), 4, name + ': four reps = four hits'); assert.equal(run('hp'), 16);
+  assert.equal(run('count'), 4, name + ': four reps = four hits'); assert.equal(run('hp'), 20 - 4 * { squat: 1, pushup: 3 }[name], name + ': damage follows the difficulty');
   // Switching the exercise ends the session and releases the camera.
   h.el('exSwing').onclick(); assert.equal(run('exercise'), 'swing'); assert.equal(run('mode'), 'idle'); assert.equal(run('stream'), null); assert.equal(run('count'), 0); assert.equal(run('detector.kind'), 'swing'); assert(h.stopped > 0);
  }

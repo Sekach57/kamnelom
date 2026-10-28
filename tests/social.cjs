@@ -39,7 +39,7 @@ const tick = (ms = 0) => new Promise(r => setTimeout(r, ms));
  const c = client(); await settle(c); await c.run(`openGroup(${JSON.stringify(gid)})`); await settle(c); assert.equal(c.run('group.name'), 'Башня друзей'); assert.equal(c.run('isMember()'), false); assert.equal(c.el('groupJoin').hidden, false);
  await c.run('joinGroup()'); await settle(c); assert.equal(c.run('isMember()'), true); await settle(a); assert.equal(a.run('group.members.length'), 2, 'the first member sees the newcomer live');
  await c.run('toggleActive()'); assert.equal(c.run('activeGroup'), gid); c.run("mode='camera';paused=false;exercise='pushup'"); for (let i = 0; i < 4; i++) rep(c); now += 30_000; await c.run('flush()'); await settle(a);
- assert.equal(a.run('group.total'), 4, 'reps flow into the group and reach the other member through the stream'); assert.equal(a.run("group.members.find(m => m.nick !== 'Бальдур').counts.pushup"), 4); assert(a.el('groupProgress').textContent.includes('4 из 200'));
+ assert.equal(a.run('group.total'), 12, '4 push-ups = 12 points flow into the group and reach the other member through the stream'); assert.equal(a.run("group.members.find(m => m.nick !== 'Бальдур').counts.pushup"), 4); assert(a.el('groupProgress').textContent.includes('12 из 200'));
  a.run('sceneTick()'); c.run('sceneTick()'); a.run('closeGroup()'); assert.equal(a.el('groupPanel').hidden, true);
  // sign-in failure does not break the page
  const d = client(); await settle(d); await d.run("loginFromLink('p-zzzzzzzz','x'.repeat(30))").catch(() => { }); assert.equal(d.run('account.id'), d.run('profile.id'));

@@ -76,14 +76,18 @@ function drawGnome(c, look = GNOME_DEFAULT, pose = {}) {
   c.strokeStyle = coat; c.lineWidth = 11; c.lineCap = 'square'; c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.stroke(); c.strokeStyle = skin; c.lineWidth = 9; c.beginPath(); c.moveTo(ex, ey); c.lineTo(tx, ty); c.stroke(); R(tx - 4, ty - 5, 9, 11, skinLight) }
  c.restore(); c.restore();
 }
-// Wind-up amount 0..1 for a hit that started `phase` seconds ago: eases back for .2 s, snaps forward in .09 s, then rests.
-function gnomeBack(phase) { if (phase < 0 || phase >= .65) return 0; if (phase < .2) { const k = phase / .2; return k * k * (3 - 2 * k) } return phase < .29 ? 1 - (phase - .2) / .09 : 0 }
+// Game balance: damage to the boulder per rep (boulder HP is 20). Squats are the easiest, push-ups the hardest.
+const EXERCISE_WEIGHT = { squat: 1, swing: 2, pushup: 3 };
+// Seconds from the start of a rep to the hit: heavier exercises wind up longer. `wind` is the end of the wind-up, `hit` the moment of impact.
+const GNOME_TIMING = { squat: { wind: .16, hit: .25 }, swing: { wind: .2, hit: .29 }, pushup: { wind: .28, hit: .37 } };
+// Wind-up amount 0..1 for a hit that started `phase` seconds ago: eases back, snaps forward at the hit, then rests.
+function gnomeBack(phase, t = GNOME_TIMING.swing) { if (phase < 0 || phase >= t.hit + .36) return 0; if (phase < t.wind) { const k = phase / t.wind; return k * k * (3 - 2 * k) } return phase < t.hit ? 1 - (phase - t.wind) / (t.hit - t.wind) : 0 }
 // Pose for an exercise: swing = hammer, squat = log pushed with the legs, pushup = both hands on the rock.
 function gnomePose(exercise, phase) {
- const b = gnomeBack(phase);
+ const t = GNOME_TIMING[exercise] || GNOME_TIMING.swing, b = gnomeBack(phase, t);
  if (exercise === 'squat') return { tool: 'ram', dx: -3 - 12 * b, dy: 12 * b, spread: 6 * b };
- if (exercise === 'pushup') return { tool: 'push', dx: -3 - 10 * b, reach: 1 - b, hand: [51 + 10 * b, -36] };
- let angle = -.52; if (phase >= 0 && phase < .2) angle = -.52 - (phase / .2) * 1.3; else if (phase < .29 && phase >= .2) angle = -1.82 + ((phase - .2) / .09) * 1.67; else if (phase < .65 && phase >= .29) angle = -.15 - (phase - .29) / .36 * .37;
+ if (exercise === 'pushup') return { tool: 'push', dx: -3 - 14 * b, dy: 4 * b, reach: 1 - b, hand: [51 + 14 * b, -36] };
+ let angle = -.52; if (phase >= 0 && phase < t.wind) angle = -.52 - (phase / t.wind) * 1.3; else if (phase < t.hit && phase >= t.wind) angle = -1.82 + ((phase - t.wind) / (t.hit - t.wind)) * 1.67; else if (phase < t.hit + .36 && phase >= t.hit) angle = -.15 - (phase - t.hit) / .36 * .37;
  return { tool: 'hammer', angle };
 }
-if (typeof module !== 'undefined') module.exports = { gnomeLook, gnomeHash, drawGnome, gnomePose, gnomeBack, GNOME_PARTS, GNOME_DEFAULT };
+if (typeof module !== 'undefined') module.exports = { gnomeLook, gnomeHash, drawGnome, gnomePose, gnomeBack, GNOME_TIMING, EXERCISE_WEIGHT, GNOME_PARTS, GNOME_DEFAULT };

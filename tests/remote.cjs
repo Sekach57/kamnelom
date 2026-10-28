@@ -25,7 +25,7 @@ const tick = () => new Promise(r => setTimeout(r, 0));
  assert([...seen].some(l => l.includes('ПРОБНЫЕ 2/3')), [...seen].join('|')); assert.equal(screen.run('count'), 0, 'trial swings never reach the screen game');
  phone.landmarks = skeleton({ s: TOP }); phone.advance(1800); await tick(); assert.equal(screen.run('mode'), 'remote'); assert.equal(phone.run('mode'), 'camera');
  const cyc = n => { const t = phone.time; return (async () => { for (let i = 0; i < 28 * n + 2; i++) { phone.landmarks = skeleton({ s: wave(phone.time - t, 1400) }); phone.step(); screen.step(); await tick() } phone.landmarks = skeleton({ s: TOP }); for (let i = 0; i < 8; i++) { phone.step(); screen.step(); await tick() } })() };
- await cyc(3); assert.equal(phone.run('count'), 3); assert.equal(screen.run('count'), 3, 'screen count follows the phone'); assert.equal(screen.run('hp'), 17, 'screen game hits the rock');
+ await cyc(3); assert.equal(phone.run('count'), 3); assert.equal(screen.run('count'), 3, 'screen count follows the phone'); assert.equal(screen.run('hp'), 14, 'screen game hits the rock (3 swings x 2 damage)');
  // Hints from the phone appear on the screen.
  phone.landmarks = skeleton({ s: TOP, wrists: 'none' }); for (let i = 0; i < 30; i++) { phone.step(); await tick() } assert.equal(screen.el('poseHint').hidden, false); assert(screen.el('poseHint').textContent.includes('запястья'));
  phone.landmarks = skeleton({ s: TOP }); for (let i = 0; i < 20; i++) { phone.step(); await tick() } assert.equal(screen.el('poseHint').hidden, true);
