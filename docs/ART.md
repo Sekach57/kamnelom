@@ -36,3 +36,11 @@ this repository and must not be committed. Regenerate with the Meshy API (`/open
 - Real-device check of frame rate on iPhone 13 (WebGL, about 270 px render target).
 - Models are about 12 MB in total; texture downscaling would shrink first load.
 - Per-player look is a colour tint only; more variants need more generated models.
+
+## Animation (updated)
+
+`assets/dwarf.glb` now carries mocap clips from Meshy's animation library (Animation API, `action_ids` 128 Heavy Hammer Swing,
+319 Air Squat, 329 Push Up, 327 Kettlebell Swing, 85 Axe Stance; about 3 credits each). `Gnome` in `scene3d.js` plays them with
+a `THREE.AnimationMixer`: a ready stance per exercise, then a segment of the clip per rep, with the impact landing at
+`TIMING[ex].hit` (keep it equal to `GNOME_TIMING` in `gnome.js`, the game's damage uses it). The hammer follows the right hand
+for swings and lies on the floor for squats and push-ups. The earlier hand-written IK pose engine was removed.

@@ -83,10 +83,10 @@ body[data-scr="menu"] .hud{display:none}
 .pose-hint.arena-hint{position:absolute;left:50%;top:150px;transform:translateX(-50%)}
 
 /* start menu over the scene */
-.menu{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:16px;pointer-events:none;overflow:auto}
+.menu{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:16px;pointer-events:none;overflow:hidden}
 body:not([data-scr="menu"]) .menu{display:none}
 @media(min-width:821px){.menu{place-items:center start;padding-left:4vw}}
-.menu-panel{pointer-events:auto;width:min(560px,100%);padding:20px 22px 22px;display:grid;gap:16px;background:#1a1525f2;margin:var(--px)}
+.menu-panel{pointer-events:auto;max-height:100%;overflow:auto;width:min(560px,100%);padding:20px 22px 22px;display:grid;gap:16px;background:#1a1525f2;margin:var(--px)}
 .logo{margin:0;font:700 clamp(40px,8vw,64px)/.95 var(--head);letter-spacing:.04em;color:var(--gold);text-shadow:0 5px 0 #000}
 .step h2{margin:0 0 10px;font:400 13px var(--head);letter-spacing:.14em;color:var(--muted)}
 .choices{display:grid;gap:8px}

@@ -5,9 +5,9 @@ import { clone as cloneRig } from './vendor/three/SkeletonUtils.js';
 // 3D quarry scene: gnomes (rigged GLB) hit a boulder (GLB). Two cameras: "solo" (three-quarter view)
 // and "group" (looking down on a ring of gnomes around one boulder). Animation is procedural on the
 // skeleton, driven by the same timing the 2D game uses (wind-up, hit, recover).
-const TIMING = { squat: { wind: .16, hit: .25 }, swing: { wind: .2, hit: .29 }, pushup: { wind: .28, hit: .37 } };
 const TINTS = ['#ffffff', '#ffd2b8', '#bcd0ff', '#cdeec0', '#ffe49a', '#e2c4ff', '#ffb0bd', '#a8f0e0'];
-const HAMMER_LEN = .8; // model units; grip = fraction of the length from the butt
+const HAMMER_LEN = .8;
+const TIMING = { squat: { hit: .4 }, swing: { hit: .5 }, pushup: { hit: .6 } }; // model units; grip = fraction of the length from the butt
 const ease = k => k * k * (3 - 2 * k);
 const hash = s => { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) / 4294967295 };
 
@@ -52,9 +52,23 @@ export function lookFor(id) {
 }
 const HAIR = ['#6b3a1e', '#a8321f', '#2b2430', '#8d8a90', '#d9c9a0', '#4a3a28'], METAL = ['#ffffff', '#c9d3ff', '#ffd9a0', '#d8ffe6', '#ffc4c4'];
 
+// Mocap clips from Meshy's animation library, baked into assets/dwarf.glb. Per exercise: the stance he holds while waiting
+// ("ready"), and the part of a clip played for one rep: it starts at `from` and its impact lands at `to`, `speed` makes
+// that take TIMING[ex].hit seconds so the visual blow and the game's damage coincide.
+const CLIPS = {
+ swing: { ready: { clip: 'Axe_Stance', loop: true }, strike: { clip: 'Heavy_Hammer_Swing', from: .75, to: 1.72, end: 1.8 } },
+ squat: { ready: { clip: 'air_squat', time: 0 }, strike: { clip: 'air_squat', from: .5, to: 1.45, end: 1.83 } },
+ pushup: { ready: { clip: 'push_up', time: 0 }, strike: { clip: 'push_up', from: 0, to: 1.3, end: 1.5 } },
+};
+const HAMMER_GRIP = .3; // grip point: fraction of the hammer's length from its centre towards the butt
+const HAMMER_IN_HAND = { pos: [0, 0, 0], rot: [Math.PI / 2, -Math.PI / 2, 0] };
+const STAND_OFFSET = { swing: 0, squat: 0, pushup: -.95 }; // push-ups happen lying down toward the boulder, so he starts further back
+const FLOOR_SPOT = { swing: [-.55, .05, -.1], squat: [-.55, .05, -.1], pushup: [-.8, .05, .1] };
+
 class Gnome {
  constructor(src, id, scale = 1) {
-  this.id = id; this.root = new THREE.Group(); this.look = lookFor(id); this.model = cloneRig(src.scene); this.S = scale; this.pivot = new THREE.Group(); this.root.add(this.pivot); this.model.scale.set(scale * this.look.w, scale * this.look.h, scale * this.look.w); this.pivot.add(this.model);
+  this.id = id; this.root = new THREE.Group(); this.look = lookFor(id); this.model = cloneRig(src.scene); this.S = scale;
+  this.model.scale.set(scale * this.look.w, scale * this.look.h, scale * this.look.w); this.root.add(this.model);
   const tint = new THREE.Color(TINTS[this.look.tint]), bones = {};
   this.model.traverse(o => {
    if (o.isBone) bones[o.name] = o;
@@ -63,90 +77,47 @@ class Gnome {
   const hs = assets.hammer.scene.clone(true), hb = new THREE.Box3().setFromObject(hs), hsz = hb.getSize(new THREE.Vector3());
   hs.scale.setScalar(HAMMER_LEN * scale / Math.max(hsz.x, hsz.y, hsz.z)); hs.updateMatrixWorld(true); hs.position.sub(new THREE.Box3().setFromObject(hs).getCenter(new THREE.Vector3()));
   this.hammer = new THREE.Group(); this.hammer.add(hs); this.root.add(this.hammer); this.hs = hs;
-  if (bones.Spine) bones.Spine.scale.set(this.look.belly, 1, this.look.belly);
-  for (const k of ['LeftArm', 'RightArm']) if (bones[k]) bones[k].scale.setScalar(1.2 * this.look.arm);
-  this.b = bones; this.rest = {}; for (const k in bones) this.rest[k] = bones[k].quaternion.clone();
-  this.model.updateMatrixWorld(true); const mq0 = this.model.getWorldQuaternion(new THREE.Quaternion()).invert(); this.footRest = {}; this.footRestQ = {};
-  for (const side of ['Left', 'Right']) { const f = bones[side + 'Foot']; if (f) { this.footRest[side] = f.getWorldPosition(new THREE.Vector3()); this.footRestQ[side] = mq0.clone().multiply(f.getWorldQuaternion(new THREE.Quaternion())) } }
-  this.P = {}; this.exercise = 'swing';
-  this.hitAt = -10; this.ex = 'swing'; this.phase = hash(id) * 6; this.hitDone = true; this.onHit = null;
+  this.b = bones; this.hold = 1; this.holdGoal = 1; this.off = 0;
+  this.mixer = new THREE.AnimationMixer(this.model); this.clips = {}; for (const c of src.animations) this.clips[c.name] = c; this.acts = {};
+  this.exercise = null; this.cur = null; this.phase = hash(id) * 6; this.hitAt = -10; this.hitDone = true; this.onHit = null; this.dmg = 1;
+  this.mixer.addEventListener('finished', e => { if (e.action === this.strikeAct) this.ready() });
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(1.3 * scale, 1.3 * scale), new THREE.MeshBasicMaterial({ map: radial('rgba(0,0,0,.6)', 'rgba(0,0,0,0)'), transparent: true, depthWrite: false }));
   sh.rotation.x = -Math.PI / 2; sh.position.y = .01; this.root.add(sh);
+  this.setExercise('swing');
  }
-
- strike(ex, now) { if (TIMING[ex] && ex !== this.exercise) this.setExercise(ex); this.hitAt = now; this.hitDone = false }
- setExercise(ex) { if (KF[ex]) this.exercise = ex }
- // additive rotation on a bone, in its own frame
- rot(name, x = 0, y = 0, z = 0) { const b = this.b[name]; if (b) b.quaternion.copy(this.rest[name]).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z))) }
- // Pose engine: each exercise has three key poses (rest, wind-up, hit). The parameters ease toward the blend of
- // those keys, so switching exercise glides from one stance to the other. Arms and legs are solved with two-bone IK.
+ act(name) { return this.acts[name] || (this.acts[name] = this.mixer.clipAction(this.clips[name])) }
+ // switch to a clip with a short crossfade
+ go(action, fade = .3) {
+  action.enabled = true; action.setEffectiveWeight(1);
+  if (this.cur && this.cur !== action) { action.reset().play(); this.cur.crossFadeTo(action, fade, false) } else action.play();
+  this.cur = action;
+ }
+ ready() {
+  const r = CLIPS[this.exercise].ready, a = this.act(r.clip); a.reset(); a.setLoop(r.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = true; a.time = r.time || 0; a.timeScale = r.loop ? 1 : 0;
+  this.go(a, .35); this.holdGoal = this.exercise === 'swing' ? 1 : 0;
+ }
+ setExercise(ex) { if (CLIPS[ex] && ex !== this.exercise) { this.exercise = ex; this.ready() } }
+ strike(ex, now) {
+  if (ex !== this.exercise) this.setExercise(ex);
+  const c = CLIPS[this.exercise].strike, a = this.act(c.clip); a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.time = c.from; a.timeScale = (c.to - c.from) / TIMING[this.exercise].hit;
+  this.strikeAct = a; this.go(a, .12); this.hitAt = now; this.hitDone = false;
+ }
  update(now, dt) {
-  const ex = this.exercise, K = KF[ex], t = TIMING[ex], p = now - this.hitAt, S = this.S;
-  let back = 0, slam = 0, striking = false;
-  if (p >= 0 && p < t.hit + .5) {
-   striking = true;
-   if (p < t.wind) back = ease(p / t.wind);
-   else if (p < t.hit) { const k = (p - t.wind) / (t.hit - t.wind); back = 1 - k * k; slam = k * k }
-   else slam = Math.max(0, 1 - (p - t.hit) / .4);
-   if (!this.hitDone && p >= t.hit) { this.hitDone = true; this.onHit && this.onHit(this) }
-  }
-  const P = this.P, rate = 1 - Math.exp(-dt * (striking ? 28 : 5));
-  for (const k in K[0]) { const goal = K[0][k] + back * (K[1][k] - K[0][k]) + slam * (K[2][k] - K[0][k]); P[k] = P[k] === undefined ? goal : P[k] + (goal - P[k]) * rate }
-  const breathe = Math.sin(now * 2 + this.phase) * .004;
-  this.pivot.rotation.x = P.pitch; this.pivot.position.set(0, 0, P.fwd * S);
-  this.model.position.y = -P.hips * S + breathe;
-  for (const k of LIMBS) this.b[k] && this.b[k].quaternion.copy(this.rest[k]);
-  this.rot('Spine', P.lean * .5, 0, 0); this.rot('Spine01', P.lean * .5, 0, 0); this.rot('Head', -P.lean * .45, 0, 0);
+  this.mixer.update(dt);
+  this.off += (STAND_OFFSET[this.exercise] - this.off) * (1 - Math.exp(-dt * 4)); this.model.position.z = this.off * this.S;
+  if (!this.hitDone && now - this.hitAt >= TIMING[this.exercise].hit) { this.hitDone = true; this.onHit && this.onHit(this) }
+  // the hammer is in the right hand for swings and lies on the floor for squats and push-ups; it glides between the two
+  this.hold += (this.holdGoal - this.hold) * (1 - Math.exp(-dt * 6));
+  const hand = this.b.RightHand; if (!hand) return;
   this.root.updateMatrixWorld(true);
-  const root = this.root, W = v => root.localToWorld(v.clone()), mq = this.model.getWorldQuaternion(new THREE.Quaternion());
-  const dir = (x, y, z) => new THREE.Vector3(x, y, z).applyQuaternion(mq);
-  // legs: planted where they started, so a lowered pelvis bends the knees
-  this.legIK('Left', this.pivot.localToWorld(this.footRest.Left.clone()), dir(.25, 0, 1)); this.legIK('Right', this.pivot.localToWorld(this.footRest.Right.clone()), dir(-.25, 0, 1));
-  // hammer and hand targets, in the player's (yaw-only) frame
-  const L = HAMMER_LEN * S, butt = new THREE.Vector3(P.bx, P.by, P.bz).multiplyScalar(S), hd = new THREE.Vector3(P.hx, P.hy, P.hz).normalize();
-  const gR = butt.clone().addScaledVector(hd, .1 * L), gL = butt.clone().addScaledVector(hd, .3 * L);
-  const hands = side => {
-   const free = new THREE.Vector3(side === 'Left' ? P.lx : -P.lx, P.ly, P.lz).multiplyScalar(S), sh = root.worldToLocal(this.b[side + 'Arm'].getWorldPosition(new THREE.Vector3()));
-   const ground = new THREE.Vector3(sh.x, .05 * S, sh.z), f = free.lerp(ground, P.ground);
-   return f.lerp(side === 'Left' ? gL : gR, P.hold);
-  };
-  this.armIK('Left', W(hands('Left')), dir(1, -1, -.3)); this.armIK('Right', W(hands('Right')), dir(-1, -1, -.3));
-  this.keepFeetFlat(mq);
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(-1, 0, 0), hd).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(-1, 0, 0), P.roll));
-  this.hammer.quaternion.copy(q); this.hammer.position.copy(butt).addScaledVector(hd, L / 2);
+  const hp = this.root.worldToLocal(hand.getWorldPosition(new THREE.Vector3())), hq = hand.getWorldQuaternion(new THREE.Quaternion()), rq = this.root.getWorldQuaternion(new THREE.Quaternion()).invert();
+  const HI = HAMMER_IN_HAND;
+  const inHandQ = rq.clone().multiply(hq).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...HI.rot)));
+  // the palm closes around the handle: shift the hammer along its own axis so the grip point sits in the hand
+  const inHandP = hp.clone().sub(new THREE.Vector3(HAMMER_GRIP * HAMMER_LEN * this.S, 0, 0).applyQuaternion(inHandQ)).add(new THREE.Vector3(...HI.pos).multiplyScalar(this.S).applyQuaternion(inHandQ));
+  const floorP = new THREE.Vector3(...FLOOR_SPOT[this.exercise]).multiplyScalar(this.S), floorQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, .2, 0));
+  this.hammer.position.lerpVectors(floorP, inHandP, this.hold); this.hammer.quaternion.slerpQuaternions(floorQ, inHandQ, this.hold);
  }
- armIK(side, target, pole) { ik2(this.b[side + 'Arm'], this.b[side + 'ForeArm'], this.b[side + 'Hand'], target, pole) }
- legIK(side, target, pole) { ik2(this.b[side + 'UpLeg'], this.b[side + 'Leg'], this.b[side + 'Foot'], target, pole) }
- keepFeetFlat(mq) {
-  for (const side of ['Left', 'Right']) { const f = this.b[side + 'Foot']; if (!f) continue; const wq = mq.clone().multiply(this.footRestQ[side]), pq = f.parent.getWorldQuaternion(new THREE.Quaternion()); f.quaternion.copy(pq.invert().multiply(wq)); f.updateMatrixWorld(true) }
- }
-}
-
-const LIMBS = ['LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot'];
-// key poses per exercise: [rest, wind-up, hit]; hammer (b = butt point, h = head direction) is in the player's frame, in model units
-const base = { pitch: 0, hips: 0, lean: .06, fwd: 0, hold: 1, ground: 0, bx: 0, by: .8, bz: .28, hx: 0, hy: -.45, hz: .89, roll: 0, lx: .14, ly: 1, lz: .36 };
-const mk = o => ({ ...base, ...o });
-const FLOOR = { hold: 0, bx: -.55, by: .06, bz: -.2, hx: 0, hy: 0, hz: 1, roll: 0 };
-const KF = {
- swing: [mk({}), mk({ lean: -.32, bx: 0, by: 1.15, bz: -.06, hx: 0, hy: .8, hz: -.6 }), mk({ lean: .5, hips: .04, fwd: .06, bx: 0, by: 1, bz: .26, hx: 0, hy: -.38, hz: .92 })],
- squat: [mk({ ...FLOOR }), mk({ ...FLOOR, hips: .4, lean: .34, ly: .84, lz: .4 }), mk({ ...FLOOR, lean: .5, fwd: .16, ly: 1.04, lz: .5 })],
- pushup: [mk({ ...FLOOR, bx: -.7, bz: .2, pitch: 1.12, ground: 1, fwd: -.85 }), mk({ ...FLOOR, bx: -.7, bz: .2, pitch: 1.38, ground: 1, fwd: -.85 }), mk({ ...FLOOR, bx: -.7, bz: .2, pitch: 1.1, ground: 1, fwd: -.8 })],
-};
-
-// two-bone IK in world space: bend `lower` toward `pole`, reach `target` with `end`
-const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
-function aim(bone, child, to) {
- const bp = bone.getWorldPosition(_a), from = child.getWorldPosition(_b).sub(bp).normalize(), dirv = _c.copy(to).sub(bp).normalize();
- const dq = new THREE.Quaternion().setFromUnitVectors(from, dirv), wq = bone.getWorldQuaternion(new THREE.Quaternion()).premultiply(dq), pq = bone.parent.getWorldQuaternion(new THREE.Quaternion());
- bone.quaternion.copy(pq.invert().multiply(wq)); bone.updateMatrixWorld(true);
-}
-function ik2(upper, lower, end, target, pole) {
- if (!upper || !lower || !end) return;
- const A = upper.getWorldPosition(new THREE.Vector3()), B = lower.getWorldPosition(new THREE.Vector3()), C = end.getWorldPosition(new THREE.Vector3());
- const l1 = A.distanceTo(B), l2 = B.distanceTo(C), AT = target.clone().sub(A), dist = Math.min(Math.max(AT.length(), .05), (l1 + l2) * .995), d = AT.normalize();
- const a = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist), h = Math.sqrt(Math.max(0, l1 * l1 - a * a)), pp = pole.clone().addScaledVector(d, -pole.dot(d)).normalize();
- const B2 = A.clone().addScaledVector(d, a).addScaledVector(pp, h), T2 = A.clone().addScaledVector(d, dist);
- aim(upper, lower, B2); aim(lower, end, T2);
 }
 
 export function create(canvas, opts = {}) {

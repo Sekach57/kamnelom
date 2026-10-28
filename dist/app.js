@@ -136,7 +136,7 @@ if(damage>0)crack([[-67,-59],[-49,-56],[-34,-65],[-20,-48]]);if(damage>3)crack([
 function dwarf(t){
  const phase=gameTime-hitAt,bob=mode==='idle'||paused?0:Math.sin(t*2)*.7;ctx.save();ctx.translate(278,Math.round(252+bob));
  drawGnome(ctx,screenLook||myLook,gnomePose(exercise,phase));ctx.restore()}
-function impact(){pendingHit=false;const dmg=pendingDmg;hp=Math.max(0,hp-dmg);shake=hp===0?5+dmg:1.2+dmg*1.3;audio(dmg);let label=$('hitLabel');label.style.fontSize=hp===0?'':(14+dmg*5)+'px';label.textContent=hp===0?'BOULDER SMASHED!':'−'+dmg;label.classList.remove('pop');void label.offsetWidth;label.classList.add('pop');const num=hp===0?55:6+dmg*6;for(let i=0;i<num;i++){const seed=count*97+i;particles.push({x:hp===0?402+(hash(seed)-.5)*100:335,y:hp===0?190+hash(seed+11)*50:198,vx:(hash(seed+2)-.45)*(hp===0?150:95),vy:-30-hash(seed+3)*120,life:.5+hash(seed+4)*.7,size:2+Math.floor(hash(seed+5)*(hp===0?8:4)),color:['#b9a79b','#716977','#e8b16e','#d6c0a6'][i%4]})}if(hp===0){broken++;respawnAt=gameTime+.55}updateRock()}
+function impact(){pendingHit=false;const dmg=pendingDmg;hp=Math.max(0,hp-dmg);shake=hp===0?5+dmg:1.2+dmg*1.3;audio(dmg);let label=$('hitLabel');label.style.fontSize=hp===0?'':(14+dmg*5)+'px';label.textContent=hp===0?'BOULDER SMASHED!':'−'+dmg;label.classList.remove('pop');void label.offsetWidth;label.classList.add('pop');const num=hp===0?55:6+dmg*6;for(let i=0;i<num;i++){const seed=count*97+i;particles.push({x:hp===0?402+(hash(seed)-.5)*100:335,y:hp===0?190+hash(seed+11)*50:198,vx:(hash(seed+2)-.45)*(hp===0?150:95),vy:-30-hash(seed+3)*120,life:.5+hash(seed+4)*.7,size:2+Math.floor(hash(seed+5)*(hp===0?8:4)),color:['#b9a79b','#716977','#e8b16e','#d6c0a6'][i%4]})}if(hp===0){broken++;respawnAt=gameTime+.25}updateRock()}
 function draw(t){ctx.save();if(shake>.05)ctx.translate(Math.round(Math.sin(t*99)*shake),Math.round(Math.cos(t*83)*shake*.6));r(-10,-10,660,380,'#282633');
 // Layered mountain silhouettes and a deep mine entrance.
 poly([[0,140],[45,80],[86,103],[131,41],[180,72],[230,24],[280,84],[340,48],[391,95],[449,35],[510,86],[565,46],[640,96],[640,280],[0,280]],'#36323f');poly([[0,187],[64,123],[112,145],[171,92],[219,136],[288,103],[352,147],[401,110],[477,136],[524,95],[586,129],[640,113],[640,280],[0,280]],'#403a48');
@@ -198,7 +198,7 @@ async function startScreen(){
  role='screen';screenFresh=true;stopCamera();mode='idle';paused=false;fresh();sync();setPair('screen','Preparing the room…');
  try{if(typeof Peer==='undefined')await loadScript('vendor/peerjs/peerjs.min.js');const l=newLink(PeerLink),generation=pairGeneration,id=await l.host();if(generation!==pairGeneration)return;
   $('pairStatus').textContent='Scan the QR code with the iPhone camera and open the link in Safari: the phone connects by itself. The link works while this page is open.';await drawQr(roomUrl(id));$('pairCode').value=roomUrl(id);$('pairCode').hidden=false;$('pairCopy').hidden=false;$('pairManual').hidden=false}
- catch(e){role='solo';closeLink();setPair('screen',roomError(e));$('pairManual').hidden=false}
+ catch(e){closeLink();setPair('screen',roomError(e));$('pairManual').hidden=false}
 }
 async function joinRoom(room){
  role='phone';setPair('phone','Connecting to the screen…',1);
