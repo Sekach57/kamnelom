@@ -20,7 +20,7 @@ https://strumok-pixel-river-a13.steadycivet22.chatgpt.site
 
 Добавлено после экспорта: `dist/vendor/mediapipe/` — `@mediapipe/tasks-vision` 1.1.1
 (npm, Apache-2.0, LICENSE рядом) и `pose_landmarker_lite.task` (Google, MediaPipe Models,
-SHA-256 в docs/POSE_MODEL.md). `dist/detector.js` и `tests/detector.cjs` удалены.
+SHA-256 в docs/POSE_MODEL.md). `dist/detector.js` и `tests/detector.cjs` удалены. `dist/vendor/qr/`: qrcode-generator 1.4.4 (MIT) и jsQR 1.4.0 (Apache-2.0) для QR-подключения телефона и экрана.
 
 Из экспорта исключены .git и хостинговая конфигурация .openai, идентификаторы
 аккаунта, git credentials и токены. Для другого репозитория они не нужны.

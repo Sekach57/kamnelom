@@ -60,6 +60,7 @@ git commit -m "Import Kamnelom prototype and handoff"
 - `tools/` — локальный статический сервер и запуск проверок без зависимостей.
 - `docs/CODEX_HANDOFF.md` — требования, архитектура, выполненная работа, ограничения.
 - `docs/NEXT_TASK.md` — готовое задание на улучшение распознавания.
+- `docs/REMOTE.md` — режим «телефон считает, компьютер показывает» (WebRTC без сервера).
 - `docs/POSE_MODEL.md` — версии, файлы, алгоритм счёта, требования к хостингу.
 - `docs/RECOGNITION_RESEARCH.md` — исследование MediaPipe, MoveNet, Apple Vision.
 - `docs/TEST_PLAN.md` — сценарии проверки на настоящем телефоне.

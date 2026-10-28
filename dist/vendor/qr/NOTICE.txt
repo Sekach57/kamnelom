@@ -1,0 +1,2 @@
+qrcode-generator 1.4.4, MIT License, Copyright (c) Kazuhiko Arase (https://github.com/kazuhikoarase/qrcode-generator).
+jsQR 1.4.0 (jsQR.js), Apache-2.0, see jsQR.LICENSE. Both vendored unchanged from npm.
