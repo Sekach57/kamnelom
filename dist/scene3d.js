@@ -6,7 +6,7 @@ import { clone as cloneRig } from './vendor/three/SkeletonUtils.js';
 // and "group" (looking down on a ring of gnomes around one boulder). Animation is procedural on the
 // skeleton, driven by the same timing the 2D game uses (wind-up, hit, recover).
 const TINTS = ['#ffffff', '#ffd2b8', '#bcd0ff', '#cdeec0', '#ffe49a', '#e2c4ff', '#ffb0bd', '#a8f0e0'];
-const HAMMER_LEN = .8;
+const HAMMER_LEN = .72, HAMMER_BUTT = .1; // butt end sticks out this fraction of the length behind the right hand
 const TIMING = { squat: { hit: .4 }, swing: { hit: .5 }, pushup: { hit: .6 } }; // model units; grip = fraction of the length from the butt
 const ease = k => k * k * (3 - 2 * k);
 const hash = s => { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) / 4294967295 };
@@ -60,8 +60,6 @@ const CLIPS = {
  squat: { ready: { clip: 'air_squat', time: 0 }, strike: { clip: 'air_squat', from: .5, to: 1.45, end: 1.83 } },
  pushup: { ready: { clip: 'push_up', time: 0 }, strike: { clip: 'push_up', from: 0, to: 1.3, end: 1.5 } },
 };
-const HAMMER_GRIP = .3; // grip point: fraction of the hammer's length from its centre towards the butt
-const HAMMER_IN_HAND = { pos: [0, 0, 0], rot: [Math.PI / 2, -Math.PI / 2, 0] };
 const STAND_OFFSET = { swing: 0, squat: 0, pushup: -.95 }; // push-ups happen lying down toward the boulder, so he starts further back
 const FLOOR_SPOT = { swing: [-.55, .05, -.1], squat: [-.55, .05, -.1], pushup: [-.8, .05, .1] };
 
@@ -108,13 +106,16 @@ class Gnome {
   if (!this.hitDone && now - this.hitAt >= TIMING[this.exercise].hit) { this.hitDone = true; this.onHit && this.onHit(this) }
   // the hammer is in the right hand for swings and lies on the floor for squats and push-ups; it glides between the two
   this.hold += (this.holdGoal - this.hold) * (1 - Math.exp(-dt * 6));
-  const hand = this.b.RightHand; if (!hand) return;
+  const rh = this.b.RightHand, lh = this.b.LeftHand; if (!rh || !lh) return;
   this.root.updateMatrixWorld(true);
-  const hp = this.root.worldToLocal(hand.getWorldPosition(new THREE.Vector3())), hq = hand.getWorldQuaternion(new THREE.Quaternion()), rq = this.root.getWorldQuaternion(new THREE.Quaternion()).invert();
-  const HI = HAMMER_IN_HAND;
-  const inHandQ = rq.clone().multiply(hq).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...HI.rot)));
-  // the palm closes around the handle: shift the hammer along its own axis so the grip point sits in the hand
-  const inHandP = hp.clone().sub(new THREE.Vector3(HAMMER_GRIP * HAMMER_LEN * this.S, 0, 0).applyQuaternion(inHandQ)).add(new THREE.Vector3(...HI.pos).multiplyScalar(this.S).applyQuaternion(inHandQ));
+  // both hands on the handle: it runs from the right hand through the left, the head beyond the left hand
+  const rp = this.root.worldToLocal(rh.getWorldPosition(new THREE.Vector3())), lp = this.root.worldToLocal(lh.getWorldPosition(new THREE.Vector3()));
+  const axis = lp.clone().sub(rp); if (axis.lengthSq() < 1e-6) axis.set(0, 1, 0); axis.normalize();
+  const Lw = HAMMER_LEN * this.S, butt = rp.clone().addScaledVector(axis, -HAMMER_BUTT * Lw);
+  const side = new THREE.Vector3(0, 1, 0).cross(axis); if (side.lengthSq() < 1e-4) side.set(1, 0, 0); side.normalize();
+  const up = axis.clone().cross(side).normalize(); // flat face of the head looks along `side`
+  const inHandQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis.clone().negate(), up, side));
+  const inHandP = butt.clone().addScaledVector(axis, Lw / 2);
   const floorP = new THREE.Vector3(...FLOOR_SPOT[this.exercise]).multiplyScalar(this.S), floorQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, .2, 0));
   this.hammer.position.lerpVectors(floorP, inHandP, this.hold); this.hammer.quaternion.slerpQuaternions(floorQ, inHandQ, this.hold);
  }
@@ -230,7 +231,7 @@ export function create(canvas, opts = {}) {
  function render(dt) {
   dt = Math.min(dt, .1); now += dt;
   if (Math.abs(shift.x - shiftNow.x) + Math.abs(shift.y - shiftNow.y) > .001) { const k = 1 - Math.exp(-dt * 6); shiftNow.x += (shift.x - shiftNow.x) * k; shiftNow.y += (shift.y - shiftNow.y) * k; applyShift() }
-  const tx = group ? 0 : .5, ty = group ? .2 : .9; camera.position.set(tx + Math.sin(AZ) * Math.cos(ELEV) * 30, ty + Math.sin(ELEV) * 30, Math.cos(AZ) * Math.cos(ELEV) * 30); camera.lookAt(tx, ty, 0)
+  const V = opts.view, tx = V ? V.x : group ? 0 : .5, ty = V ? V.y : group ? .2 : .9; if (camera.zoom !== (V ? V.zoom : 1)) { camera.zoom = V ? V.zoom : 1; camera.updateProjectionMatrix() } camera.position.set(tx + Math.sin(AZ) * Math.cos(ELEV) * 30, ty + Math.sin(ELEV) * 30, Math.cos(AZ) * Math.cos(ELEV) * 30); camera.lookAt(tx, ty, 0)
   for (const g of gnomes.values()) g.update(now, dt);
   // boulder: shrinks and glows as it takes damage
   const dmg = 1 - hp, target = broken ? 0 : .62 + hp * .38; respawn = broken ? 0 : respawn + dt;
@@ -251,7 +252,7 @@ export function create(canvas, opts = {}) {
  function project(id) { const g = gnomes.get(id); if (!g) return null; const v = new THREE.Vector3(g.root.position.x, 1.75 * g.model.scale.x / 1.25, g.root.position.z).project(camera); return { x: (v.x + 1) / 2 * canvas.clientWidth, y: (1 - v.y) / 2 * canvas.clientHeight, behind: v.z > 1 } }
  function dispose() { renderer.dispose(); renderer.forceContextLoss?.() }
  resize();
- return { setShift, setGnomes, setExercise, project, hit, setHp, breakRock, render, resize, dispose, gnomes, camera, THREE };
+ return { opts, setShift, setGnomes, setExercise, project, hit, setHp, breakRock, render, resize, dispose, gnomes, camera, THREE };
 }
 
 // Head-and-shoulders portrait of a player's dwarf (one shared offscreen renderer, cached per tint).
