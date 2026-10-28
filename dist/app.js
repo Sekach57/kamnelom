@@ -135,14 +135,14 @@ function tick(t){const dt=Math.min((t-lastTime)/1000,.1);lastTime=t;if(!document
 const CAL_LABEL={idle:'ЖДЁТ КАМЕРУ',requesting:'ВКЛЮЧАЕТ КАМЕРУ',loading:'ГРУЗИТ МОДЕЛЬ',positioning:'ВСТАЁТ В КАДР',countdown:'ОТСЧЁТ',success:'ГОТОВ!',failed:'НЕ УДАЛОСЬ — ПОВТОР',interrupted:'ПРЕРВАНО',error:'ОШИБКА КАМЕРЫ',modelError:'ОШИБКА МОДЕЛИ'};
 function remoteLabel(){if(!link||!link.open)return role==='screen'&&remoteInfo?'СВЯЗЬ С ТЕЛЕФОНОМ ПОТЕРЯНА':'ЖДЁМ ТЕЛЕФОН';if(performance.now()-remoteSeen>4000)return 'ТЕЛЕФОН НЕ ОТВЕЧАЕТ';if(mode==='remote')return paused?'ПАУЗА':'ТЕЛЕФОН · СВИНГИ';const i=remoteInfo;if(!i)return 'ТЕЛЕФОН ПОДКЛЮЧЁН';return 'ТЕЛЕФОН: '+(i.cal==='checking'?'ПРОБНЫЕ '+i.done+'/'+i.needed:CAL_LABEL[i.cal]||'…')}
 function pushState(){if(role!=='phone'||!link||!link.open)return;link.send({t:'state',cal:calibration.state,done:calibration.done,needed:calibration.needed,mode,paused,hint:curHint,status:lastStatus,n:count})}
-function setPair(title,status){$('pairPanel').hidden=false;$('pairTitle').textContent=title;$('pairStatus').textContent=status;for(const id of['pairQr','pairCode','pairCopy','pairInput','pairScan'])$(id).hidden=true}
+function setPair(title,status){$('pairPanel').hidden=false;$('pairTitle').textContent=title;$('pairStatus').textContent=status;for(const id of['pairQr','pairCode','pairCopy','pairInput','pairScan','pairManual'])$(id).hidden=true}
 function loadScript(src){return new Promise((ok,bad)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>bad(new Error('load'));document.head.appendChild(s)})}
 async function drawQr(text){if(typeof qrcode==='undefined')await loadScript('vendor/qr/qrcode.js');const q=qrcode(0,'L');q.addData(text);q.make();const n=q.getModuleCount(),cell=Math.max(2,Math.floor(480/(n+8))),size=(n+8)*cell,c=$('pairQr'),x=c.getContext('2d');c.width=c.height=size;x.fillStyle='#fff';x.fillRect(0,0,size,size);x.fillStyle='#000';for(let r=0;r<n;r++)for(let k=0;k<n;k++)if(q.isDark(r,k))x.fillRect((k+4)*cell,(r+4)*cell,cell,cell);c.hidden=false}
 function closeLink(){pairGeneration++;if(link){const l=link;link=null;l.close()}remoteInfo=null}
 function leaveRemote(){closeLink();role='solo';$('pairPanel').hidden=true;stopScan();sync()}
-function newLink(){closeLink();const generation=pairGeneration;link=new RemoteLink({onOpen:()=>{if(generation===pairGeneration)onLinkOpen()},onClose:reason=>{if(generation===pairGeneration)onLinkClose(reason)},onMessage:m=>{if(generation===pairGeneration)onRemoteMessage(m)}});return link}
-function onLinkOpen(){stopScan();$('pairPanel').hidden=true;remoteSeen=performance.now();if(role==='screen'){stopCamera();fresh();mode='idle';paused=false;remoteInfo=null;sync();lock();say('Телефон подключён. Открой на нём игру и включи фронталку: считать будет телефон, а здесь будет игра.')}else{link.send({t:'hello',v:1});pushState();say('Подключено к экрану. Включи фронталку и пройди проверку: игру увидишь на большом экране.')}}
-function onLinkClose(){link=null;if(role==='screen'){if(mode==='remote')mode='idle';sync();say('Связь с телефоном потеряна. Нажми «Этот экран — для телефона» и подключи заново: счёт на экране сохранится.')}else if(role==='phone')say('Связь с экраном потеряна. Телефон продолжает считать; подключи экран заново при необходимости.')}
+function newLink(Kind=RemoteLink){closeLink();const generation=pairGeneration;link=new Kind({onOpen:()=>{if(generation===pairGeneration)onLinkOpen()},onClose:reason=>{if(generation===pairGeneration)onLinkClose(reason)},onMessage:m=>{if(generation===pairGeneration)onRemoteMessage(m)}});return link}
+function onLinkOpen(){stopScan();$('pairPanel').hidden=true;remoteSeen=performance.now();if(role==='screen'){if(screenFresh){screenFresh=false;stopCamera();fresh();mode='idle';paused=false}remoteInfo=null;sync();lock();say('Телефон подключён. Включи на нём фронталку: считать будет телефон, а здесь будет игра.')}else{link.send({t:'hello',v:1});pushState();say('Подключено к экрану. Включи фронталку и пройди проверку: игру увидишь на большом экране.')}}
+function onLinkClose(){if(!link||!link.persistent)link=null;if(role==='screen'){if(mode==='remote')mode='idle';sync();say('Связь с телефоном потеряна. Нажми «Этот экран — для телефона» и подключи заново: счёт на экране сохранится.')}else if(role==='phone')say('Связь с экраном потеряна. Телефон продолжает считать; подключи экран заново при необходимости.')}
 function syncCount(n){if(typeof n!=='number'||n===count)return;if(n===count+1)swing(performance.now());else if(n>=0){count=n;$('count').textContent=n}}
 function onRemoteMessage(m){
  if(role==='screen'){
@@ -152,8 +152,8 @@ function onRemoteMessage(m){
  }else if(role==='phone'&&m.t==='cmd'){if(m.c==='pause'&&mode==='camera'&&!paused)$('pause').onclick();else if(m.c==='resume'&&paused)$('pause').onclick();else if(m.c==='reset')$('reset').onclick()}
 }
 setInterval(()=>{if(role==='phone')pushState();else if(role==='screen'&&link)sync()},1000);
-async function startScreen(){
- role='screen';stopCamera();mode='idle';paused=false;fresh();sync();setPair('Экран для телефона','Готовим код…');
+async function startScreenManual(){
+ role='screen';screenFresh=true;stopCamera();mode='idle';paused=false;fresh();sync();setPair('Экран для телефона','Готовим код…');
  try{const l=newLink(),generation=pairGeneration,code=await l.host();if(generation!==pairGeneration)return;const url=location.origin+location.pathname+'#join='+code;$('pairStatus').textContent='1. Наведи камеру iPhone на QR-код и открой ссылку в Safari. 2. На телефоне появится ответный код: вставь его ниже или отсканируй его QR камерой этого компьютера.';await drawQr(url);$('pairCode').value=url;$('pairCode').hidden=false;$('pairCopy').hidden=false;$('pairInput').hidden=false;$('pairScan').hidden=!navigator.mediaDevices?.getUserMedia;$('pairPaste').placeholder='Ответный код с телефона'}
  catch(e){role='solo';closeLink();setPair('Экран для телефона',e.message==='unsupported'?'Этот браузер не поддерживает WebRTC.':'Не удалось подготовить подключение. Попробуй ещё раз.')}
 }
@@ -164,14 +164,28 @@ async function startPhone(offer){
  try{const l=newLink(),generation=pairGeneration,code=await l.accept(offer);if(generation!==pairGeneration)return;$('pairStatus').textContent='Покажи этот QR камере компьютера или скопируй код и вставь его на экране. После соединения эта панель закроется.';await drawQr('#answer='+code);$('pairCode').value=code;$('pairCode').hidden=false;$('pairCopy').hidden=false}
  catch(e){closeLink();$('pairStatus').textContent=e.message==='unsupported'?'Этот браузер не поддерживает WebRTC.':'Код не подошёл или устарел. Обнови QR на экране и повтори.';$('pairInput').hidden=false}
 }
-$('roleScreen').onclick=startScreen;$('rolePhone').onclick=()=>startPhone(null);$('pairClose').onclick=()=>{if(link&&link.open){$('pairPanel').hidden=true;return}leaveRemote()};
+$('pairManual').onclick=startScreenManual;$('roleScreen').onclick=startScreen;$('rolePhone').onclick=()=>startPhone(null);$('pairClose').onclick=()=>{if(link&&link.open){$('pairPanel').hidden=true;return}leaveRemote()};
 $('pairCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('pairCode').value);$('pairStatus').textContent+=' Скопировано.'}catch{$('pairCode').select()}};
-$('pairApply').onclick=async()=>{const text=$('pairPaste').value;if(!text.trim())return;try{if(role==='screen'){await link.finish(text);$('pairStatus').textContent='Соединяем…'}else{await startPhone(text)}}catch(e){$('pairStatus').textContent='Код не подошёл. Проверь, что скопирован целиком.'}};
+$('pairApply').onclick=async()=>{const text=$('pairPaste').value;if(!text.trim())return;try{const room=parseRoom(text);if(role==='phone'&&room)await joinRoom(room);else if(role==='screen'){await link.finish(text);$('pairStatus').textContent='Соединяем…'}else{await startPhone(text)}}catch(e){$('pairStatus').textContent='Код не подошёл. Проверь, что скопирован целиком.'}};
+let screenFresh=true;
+const roomUrl=id=>location.origin+location.pathname+'#room='+id;
+const roomError=e=>e&&e.code==='not-found'?'Экран не найден: ссылка устарела или страница экрана закрыта. Открой страницу экрана заново и покажи новый QR.':e&&e.message==='unsupported'?'Этот браузер не поддерживает WebRTC.':'Не удалось связаться с сервером подключения (PeerJS). Проверь интернет или используй ручное подключение.';
+async function startScreen(){
+ role='screen';screenFresh=true;stopCamera();mode='idle';paused=false;fresh();sync();setPair('Экран для телефона','Готовим комнату…');
+ try{if(typeof Peer==='undefined')await loadScript('vendor/peerjs/peerjs.min.js');const l=newLink(PeerLink),generation=pairGeneration,id=await l.host();if(generation!==pairGeneration)return;
+  $('pairStatus').textContent='Наведи камеру iPhone на QR-код и открой ссылку в Safari: телефон подключится сам. Ссылка работает, пока открыта эта страница.';await drawQr(roomUrl(id));$('pairCode').value=roomUrl(id);$('pairCode').hidden=false;$('pairCopy').hidden=false;$('pairManual').hidden=false}
+ catch(e){role='solo';closeLink();setPair('Экран для телефона',roomError(e));$('pairManual').hidden=false}
+}
+async function joinRoom(room){
+ role='phone';setPair('Подключение к экрану','Подключаемся к экрану…');
+ try{if(typeof Peer==='undefined')await loadScript('vendor/peerjs/peerjs.min.js');const l=newLink(PeerLink),generation=pairGeneration;await l.join(room);if(generation!==pairGeneration)return}
+ catch(e){closeLink();$('pairStatus').textContent=roomError(e);$('pairInput').hidden=false;$('pairPaste').placeholder='Вставь ссылку с экрана'}
+}
 let scanning=null;
 function stopScan(){if(scanning){scanning.stop=true;scanning.stream.getTracks().forEach(t=>t.stop());scanning=null}$('scanVideo').hidden=true;$('scanVideo').srcObject=null}
 $('pairScan').onclick=async()=>{if(scanning){stopScan();return}try{if(typeof jsQR==='undefined')await loadScript('vendor/qr/jsQR.js');const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'environment',width:{ideal:1280}}}),v=$('scanVideo'),c=document.createElement('canvas'),x=c.getContext('2d',{willReadFrequently:true}),state={stream,stop:false};scanning=state;v.srcObject=stream;v.hidden=false;await v.play();$('pairStatus').textContent='Покажи QR-код телефона камере.';
  const loop=()=>{if(state.stop)return;if(v.videoWidth){c.width=v.videoWidth;c.height=v.videoHeight;x.drawImage(v,0,0);const r=jsQR(x.getImageData(0,0,c.width,c.height).data,c.width,c.height);if(r&&r.data){$('pairPaste').value=r.data;stopScan();$('pairApply').onclick();return}}setTimeout(loop,120)};loop()}catch{stopScan();$('pairStatus').textContent='Камера для сканирования недоступна: вставь код вручную.'}};
-if(location.hash.startsWith('#join=')){const offer=location.hash;history.replaceState(null,'',location.pathname+location.search);startPhone(offer)}
+if(location.hash.startsWith('#join=')||location.hash.startsWith('#room=')){const h=location.hash;history.replaceState(null,'',location.pathname+location.search);const room=parseRoom(h);if(room)joinRoom(room);else startPhone(h)}
 // --- local check of a recorded video: stepped frame by frame at a fixed rate, so a run is reproducible and nothing is uploaded ---
 const FILE_STEP=1/20;
 function fileSeek(v,time){return new Promise((resolve,reject)=>{const done=()=>{v.onseeked=v.onerror=null;resolve()};v.onseeked=done;v.onerror=()=>{v.onseeked=v.onerror=null;reject(new Error('video'))};v.currentTime=time})}

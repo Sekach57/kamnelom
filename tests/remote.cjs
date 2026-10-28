@@ -7,14 +7,15 @@ const tick = () => new Promise(r => setTimeout(r, 0));
  assert.deepEqual(await unpackSignal(code), { type: 'offer', sdp }); assert.deepEqual(await unpackSignal('https://x.io/kamnelom/#join=' + code), { type: 'offer', sdp }, 'accepts a pasted link'); assert.deepEqual(await unpackSignal(' #answer=' + code + ' \n'), { type: 'offer', sdp });
  for (const bad of ['', 'zzz', 'q123', 'z' + Buffer.from('nope').toString('base64url')]) await assert.rejects(unpackSignal(bad), /bad code|empty/, 'rejects ' + JSON.stringify(bad));
 
- // --- pairing a "screen" and a "phone" app ---
- const screen = harness({ rtc: FakePC }), phone = harness({ rtc: FakePC });
- await screen.run('startScreen()'); const url = screen.el('pairCode').value; assert(url.includes('#join=z'), 'screen shows an offer link'); assert.equal(screen.el('pairInput').hidden, false);
- await phone.run(`startPhone(${JSON.stringify(url)})`); const answer = phone.el('pairCode').value; assert(answer.startsWith('z'), 'phone shows an answer code');
- screen.el('pairPaste').value = 'garbage'; await screen.run("$('pairApply').onclick()"); assert(screen.el('pairStatus').textContent.includes('Код не подошёл'), 'bad code is reported');
- screen.el('pairPaste').value = answer; await screen.run("$('pairApply').onclick()"); await tick(); await tick();
+ // --- pairing by room link: the phone joins automatically ---
+ const { makeBroker } = require('./fakepeer.cjs'), { parseRoom } = require('../dist/remote.js'), broker = makeBroker();
+ const screen = harness({ Peer: broker.Peer }), phone = harness({ Peer: broker.Peer });
+ await screen.run('startScreen()'); const url = screen.el('pairCode').value; assert(/#room=kamnelom-[a-z0-9]{10}$/.test(url), 'screen shows a unique room link: ' + url); assert.equal(screen.el('pairQr').hidden, false);
+ await phone.run('joinRoom("kamnelom-zzzzzzzzzz")'); assert(phone.el('pairStatus').textContent.includes('Экран не найден'), 'unknown room is reported'); assert.equal(phone.run('link'), null);
+ await phone.run(`joinRoom(${JSON.stringify(parseRoom(url))})`); await tick(); await tick(); await tick();
  assert.equal(screen.run('link.open'), true); assert.equal(phone.run('link.open'), true); assert.equal(screen.el('pairPanel').hidden, true, 'panel closes after connecting'); assert.equal(phone.el('pairPanel').hidden, true);
- assert.equal(screen.run('mode'), 'idle');
+ const intruder = harness({ Peer: broker.Peer }); await intruder.run(`joinRoom(${JSON.stringify(parseRoom(url))})`); await tick(); await tick(); await tick(); assert.equal(screen.run('link.conn === link.conn && link.open'), true, 'a second phone does not kick the first'); intruder.run('closeLink()');
+ assert.notEqual(parseRoom(url), require('../dist/remote.js').newRoomId(), 'room ids are random');
  const label = () => screen.el('modeLabel').textContent;
 
  // --- phone runs the camera flow; the screen mirrors progress and then the game ---
@@ -36,9 +37,12 @@ const tick = () => new Promise(r => setTimeout(r, 0));
  screen.run('count=0'); phone.step(); await tick(); phone.run("pushState()"); await tick(); assert.equal(screen.run('count'), 3, 'count resynchronised from state');
 
  // --- link drop: phone keeps counting, screen says so ---
- phone.run('link.close()'); await tick(); assert.equal(screen.run('link'), null); assert(label().includes('ПОТЕРЯНА'), label()); await cyc(1); assert.equal(phone.run('count'), 4, 'phone keeps counting without the screen');
- // --- reset from a connected screen releases the phone camera ---
- const s2 = harness({ rtc: FakePC }), p2 = harness({ rtc: FakePC }); await s2.run('startScreen()'); await p2.run(`startPhone(${JSON.stringify(s2.el('pairCode').value)})`); s2.el('pairPaste').value = p2.el('pairCode').value; await s2.run("$('pairApply').onclick()"); await tick(); await tick();
+ phone.run('link.close()'); await tick(); assert.equal(screen.run('link.open'), false); assert(label().includes('ПОТЕРЯНА'), label()); await cyc(1); assert.equal(phone.run('count'), 4, 'phone keeps counting without the screen');
+ // --- the phone reconnects by itself and the screen keeps its game ---
+ const r1 = harness({ Peer: broker.Peer }), r2 = harness({ Peer: broker.Peer }); await r1.run('startScreen()'); await r2.run(`joinRoom(${JSON.stringify(parseRoom(r1.el('pairCode').value))})`); for (let i = 0; i < 4; i++) await tick();
+ for (const x of [r1, r2]) x.run('count=7;$("count").textContent=7'); r1.run('hp=11'); r1.run('link.conn.close()'); for (let i = 0; i < 12; i++) await new Promise(r => setTimeout(r, 5)); assert.equal(r1.run('link.open'), true, 'phone reconnected'); assert.equal(r2.run('link.open'), true); assert.equal(r1.run('count'), 7, 'screen keeps its count across a reconnect'); assert.equal(r1.run('hp'), 11, 'and does not restart its game');
+ // --- manual (serverless) pairing still works ---
+ const s2 = harness({ rtc: FakePC }), p2 = harness({ rtc: FakePC }); await s2.run('startScreenManual()'); await p2.run(`startPhone(${JSON.stringify(s2.el('pairCode').value)})`); s2.el('pairPaste').value = p2.el('pairCode').value; await s2.run("$('pairApply').onclick()"); await tick(); await tick();
  await p2.run('openCamera()'); await s2.run("$('reset').onclick()"); await tick(); assert.equal(p2.run('stream'), null, 'reset command stops the phone camera'); assert(p2.stopped > 0);
  // --- screen role can be left ---
  await s2.run("$('camera').onclick()"); assert.equal(s2.run('role'), 'solo'); assert.equal(s2.run('link'), null);

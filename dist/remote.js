@@ -59,4 +59,59 @@ class RemoteLink {
  send(message) { if (!this.open) return false; try { this.ch.send(JSON.stringify(message)); return true } catch { return false } }
  close() { this.closed = true; try { this.ch?.close() } catch { } try { this.pc?.close() } catch { } this.ch = this.pc = null }
 }
-if (typeof module !== 'undefined') module.exports = { RemoteLink, packSignal, unpackSignal };
+
+// Room link: the screen registers a random, unguessable room id with a PeerJS broker (default public
+// 0.peerjs.com), the phone opens "#room=<id>" and connects automatically. The broker only relays the
+// connection setup (and STUN/TURN help); swing counts and states go straight between the devices.
+// Same interface as RemoteLink (open, send, close, onOpen/onClose/onMessage). persistent = it reconnects by itself.
+const ROOM_PREFIX = 'kamnelom-';
+const newRoomId = () => { const a = new Uint8Array(10); (globalThis.crypto || require('crypto').webcrypto).getRandomValues(a); return ROOM_PREFIX + Array.from(a, b => (b % 36).toString(36)).join('') };
+const parseRoom = text => { const m = /(?:room=|^\s*)(kamnelom-[a-z0-9]{10})\s*$/i.exec(String(text).trim()) || /room=(kamnelom-[a-z0-9]{10})/i.exec(String(text)); return m ? m[1].toLowerCase() : null };
+class PeerLink {
+ constructor(handlers = {}, options = {}) { this.h = handlers; this.Peer = options.Peer || (typeof Peer !== 'undefined' ? Peer : null); this.peerOptions = options.peerOptions || {}; this.timeoutMs = options.timeoutMs ?? 15000; this.retryMs = options.retryMs ?? 2000; this.maxRetries = options.maxRetries ?? 30; this.persistent = true; this.peer = null; this.conn = null; this.room = null; this.role = null; this.closed = false; this.retries = 0 }
+ get open() { return !!this.conn && this.conn.open === true }
+ wait(setup) { return new Promise((resolve, reject) => { const timer = setTimeout(() => reject(Object.assign(new Error('timeout'), { code: 'timeout' })), this.timeoutMs); setup(v => { clearTimeout(timer); resolve(v) }, e => { clearTimeout(timer); reject(e) }) }) }
+ // Screen: registers the room and waits for one phone at a time.
+ async host(room = newRoomId()) {
+  if (!this.Peer) throw new Error('unsupported'); this.role = 'host'; this.room = room;
+  await this.wait((ok, bad) => {
+   this.peer = new this.Peer(room, this.peerOptions);
+   this.peer.on('open', () => ok(room)); this.peer.on('error', e => { if (e.type === 'unavailable-id') bad(Object.assign(new Error('taken'), { code: 'taken' })); else if (!this.peer?.open) bad(e); else this.h.onError?.(e) });
+   this.peer.on('disconnected', () => { if (!this.closed) { try { this.peer.reconnect() } catch { } } });
+   this.peer.on('connection', c => this.adopt(c));
+  });
+  return room;
+ }
+ // A newer phone connection replaces a dead one, but never kicks a live one.
+ adopt(c) {
+  if (this.open) { try { c.on('open', () => c.close()) } catch { } return }
+  this.conn = c; c.on('open', () => { if (this.conn === c) this.h.onOpen?.() }); c.on('data', m => this.message(m));
+  c.on('close', () => { if (this.conn === c) { this.conn = null; this.h.onClose?.('closed') } }); c.on('error', () => { });
+ }
+ message(m) { if (m && typeof m === 'object' && typeof m.t === 'string') this.h.onMessage?.(m) }
+ // Phone: joins the room; rejects with code 'not-found' | 'timeout' | 'taken' | Error.
+ async join(room) {
+  if (!this.Peer) throw new Error('unsupported'); this.role = 'guest'; this.room = room;
+  await this.wait((ok, bad) => { this.peer = new this.Peer(undefined, this.peerOptions); this.peer.on('open', () => ok()); this.peer.on('error', e => bad(Object.assign(new Error(e.type || 'peer'), { code: e.type === 'peer-unavailable' ? 'not-found' : 'peer' }))) });
+  this.peer.on('error', e => { if (e.type === 'peer-unavailable') this.retry() });
+  this.peer.on('disconnected', () => { if (!this.closed) { try { this.peer.reconnect() } catch { } } });
+  await this.connect(); return room;
+ }
+ connect() {
+  return this.wait((ok, bad) => {
+   const c = this.peer.connect(this.room, { reliable: true, serialization: 'json' }); let opened = false;
+   this.peer.once?.('error', e => { if (!opened) bad(Object.assign(new Error(e.type || 'peer'), { code: e.type === 'peer-unavailable' ? 'not-found' : 'peer' })) });
+   c.on('open', () => { opened = true; this.conn = c; this.retries = 0; this.h.onOpen?.(); ok() });
+   c.on('data', m => this.message(m)); c.on('error', () => { });
+   c.on('close', () => { if (this.conn === c) { this.conn = null; this.h.onClose?.('closed'); this.retry() } });
+  });
+ }
+ retry() {
+  if (this.closed || this.role !== 'guest' || this.timer) return;
+  if (this.retries++ >= this.maxRetries) return;
+  this.timer = setTimeout(() => { this.timer = null; if (!this.closed && !this.open) this.connect().catch(() => this.retry()) }, this.retryMs);
+ }
+ send(message) { if (!this.open) return false; try { this.conn.send(message); return true } catch { return false } }
+ close() { this.closed = true; clearTimeout(this.timer); try { this.conn?.close() } catch { } try { this.peer?.destroy() } catch { } this.conn = this.peer = null }
+}
+if (typeof module !== 'undefined') module.exports = { RemoteLink, PeerLink, packSignal, unpackSignal, newRoomId, parseRoom };
