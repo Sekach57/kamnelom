@@ -1,0 +1,6 @@
+# If you use Caddy (it gets the certificate by itself). Needs ports 80/443 free.
+dwarfgym.live, www.dwarfgym.live {
+	reverse_proxy 127.0.0.1:4310 {
+		flush_interval -1
+	}
+}

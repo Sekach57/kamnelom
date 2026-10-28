@@ -1,14 +1,18 @@
 {
   "name": "kamnelom",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Pixel kettlebell swing game with front-camera onboarding",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "node tools/serve.cjs dist",
     "dev:rowing": "node tools/serve.cjs reference/strumok/dist 4174",
     "test": "node tools/test.cjs",
     "test:rowing": "node tools/test.cjs --rowing",
-    "check": "node tools/check.cjs"
+    "check": "node tools/check.cjs",
+    "dev:server": "node server/index.js",
+    "test:server": "node --disable-warning=ExperimentalWarning server/test.cjs"
   }
 }
