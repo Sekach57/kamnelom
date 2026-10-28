@@ -1,0 +1,11 @@
+# Joins the game container to the network of the shared nginx (budget-app) so it can reach "dwarfgym:4310".
+# Use together with the main file: docker compose -f docker-compose.yml -f docker-compose.budget-proxy.yml up -d --build
+services:
+  dwarfgym:
+    networks:
+      - default
+      - proxy
+networks:
+  proxy:
+    name: budget-app_default
+    external: true

@@ -20,20 +20,30 @@ docker compose up -d --build
 curl http://127.0.0.1:4310/health
 ```
 
-## HTTPS
+## HTTPS на этом VPS (общий nginx из budget-app)
 
-На VPS уже может быть прокси для других проектов, порты 80/443 заняты. Не трогай чужие конфиги.
-Добавь отдельный блок для `dwarfgym.live`:
-- nginx: `deploy/nginx-dwarfgym.conf` в `conf.d`, затем `certbot --nginx -d dwarfgym.live -d www.dwarfgym.live`;
-- Caddy: `deploy/Caddyfile`;
-- прокси в Docker (как у budget-app): добавь `server_name dwarfgym.live` с `proxy_pass http://host.docker.internal:4310`
-  или подключи контейнер `dwarfgym` к его сети и проксируй на `dwarfgym:4310`.
-Для живых обновлений групп нужен выключенный буфер ответа (`proxy_buffering off`).
+Порты 80/443 занимает контейнер `budget-app-nginx-1`; конфиги лежат в `/opt/budget-app/nginx/conf.d/`, сертификаты
+выпускает `budget-app-certbot-1` (webroot `/var/www/certbot`, продление автоматическое). Конфиги других проектов не меняются:
+добавляется один новый файл `dwarfgym.conf`.
+
+1. Подключить контейнер игры к сети nginx и перезапустить:
+   `cd /opt/dwarfgym/server && docker compose -f docker-compose.yml -f docker-compose.budget-proxy.yml up -d --build`
+2. Положить блок для порта 80 и перезагрузить nginx:
+   `cp /opt/dwarfgym/server/deploy/budget-nginx/dwarfgym.http.conf /opt/budget-app/nginx/conf.d/dwarfgym.conf`
+   `docker exec budget-app-nginx-1 nginx -t && docker exec budget-app-nginx-1 nginx -s reload`
+3. Выпустить сертификат (DNS уже должен указывать на сервер: `nslookup dwarfgym.live`):
+   `docker exec budget-app-certbot-1 certbot certonly --webroot -w /var/www/certbot -d dwarfgym.live -d www.dwarfgym.live --email ВАШ_EMAIL --agree-tos --no-eff-email`
+4. Заменить файл на полный (с HTTPS) и перезагрузить:
+   `cp /opt/dwarfgym/server/deploy/budget-nginx/dwarfgym.conf /opt/budget-app/nginx/conf.d/dwarfgym.conf`
+   `docker exec budget-app-nginx-1 nginx -t && docker exec budget-app-nginx-1 nginx -s reload`
+5. Откат: `rm /opt/budget-app/nginx/conf.d/dwarfgym.conf && docker exec budget-app-nginx-1 nginx -s reload`.
+
+Для других серверов без общего nginx: `deploy/nginx-dwarfgym.conf` или `deploy/Caddyfile`.
 
 ## Обновление
 
 ```bash
-cd /opt/dwarfgym && git pull && cd server && docker compose up -d --build
+cd /opt/dwarfgym && git pull && cd server && docker compose -f docker-compose.yml -f docker-compose.budget-proxy.yml up -d --build
 ```
 
 ## Резервная копия
