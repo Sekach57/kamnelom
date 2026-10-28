@@ -45,10 +45,17 @@ function strataTexture() {
  const t = new THREE.CanvasTexture(c); t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
+// One deterministic look per player id: proportions, colours and (once the parts exist) beard and helmet.
+export function lookFor(id) {
+ const r = k => hash(id + '|' + k), pick = (k, n) => Math.floor(r(k) * n);
+ return { tint: pick('tint', TINTS.length), h: .92 + r('h') * .14, w: .9 + r('w') * .2, belly: .94 + r('belly') * .18, arm: .95 + r('arm') * .1, beard: pick('beard', 3), helmet: pick('helmet', 3), hair: pick('hair', HAIR.length), metal: pick('metal', METAL.length), rare: r('rare') > .93 };
+}
+const HAIR = ['#6b3a1e', '#a8321f', '#2b2430', '#8d8a90', '#d9c9a0', '#4a3a28'], METAL = ['#ffffff', '#c9d3ff', '#ffd9a0', '#d8ffe6', '#ffc4c4'];
+
 class Gnome {
  constructor(src, id, scale = 1) {
-  this.id = id; this.root = new THREE.Group(); this.model = cloneRig(src.scene); this.model.scale.setScalar(scale); this.root.add(this.model);
-  const tint = new THREE.Color(TINTS[Math.floor(hash(id) * TINTS.length)]), bones = {};
+  this.id = id; this.root = new THREE.Group(); this.look = lookFor(id); this.model = cloneRig(src.scene); this.model.scale.set(scale * this.look.w, scale * this.look.h, scale * this.look.w); this.root.add(this.model);
+  const tint = new THREE.Color(TINTS[this.look.tint]), bones = {};
   this.model.traverse(o => {
    if (o.isBone) bones[o.name] = o;
    if (o.isMesh) { o.frustumCulled = false; o.material = o.material.clone(); o.material.color.copy(tint); o.material.metalness = 0; o.material.roughness = .8 }
@@ -56,6 +63,7 @@ class Gnome {
   const hs = assets.hammer.scene.clone(true), hb = new THREE.Box3().setFromObject(hs), hsz = hb.getSize(new THREE.Vector3());
   hs.scale.setScalar(HAMMER_LEN / Math.max(hsz.x, hsz.y, hsz.z)); hs.updateMatrixWorld(true); hs.position.sub(new THREE.Box3().setFromObject(hs).getCenter(new THREE.Vector3()));
   this.hammer = new THREE.Group(); this.hammer.add(hs); this.model.add(this.hammer); this.hs = hs;
+  if (bones.Spine) bones.Spine.scale.set(this.look.belly, 1, this.look.belly);
   this.b = bones; this.rest = {}; for (const k in bones) this.rest[k] = bones[k].quaternion.clone();
   this.hitAt = -10; this.ex = 'swing'; this.phase = hash(id) * 6; this.hitDone = true; this.onHit = null;
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(1.3 * scale, 1.3 * scale), new THREE.MeshBasicMaterial({ map: radial('rgba(0,0,0,.6)', 'rgba(0,0,0,0)'), transparent: true, depthWrite: false }));
