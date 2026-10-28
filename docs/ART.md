@@ -37,18 +37,10 @@ this repository and must not be committed. Regenerate with the Meshy API (`/open
 - Models are about 12 MB in total; texture downscaling would shrink first load.
 - Per-player look is a colour tint only; more variants need more generated models.
 
-## Animation (updated)
+## Animation
 
-`assets/dwarf.glb` now carries mocap clips from Meshy's animation library (Animation API, `action_ids` 128 Heavy Hammer Swing,
-319 Air Squat, 329 Push Up, 327 Kettlebell Swing, 85 Axe Stance; about 3 credits each). `Gnome` in `scene3d.js` plays them with
-a `THREE.AnimationMixer`: a ready stance per exercise, then a segment of the clip per rep, with the impact landing at
-`TIMING[ex].hit` (keep it equal to `GNOME_TIMING` in `gnome.js`, the game's damage uses it). The hammer follows the right hand
-for swings and lies on the floor for squats and push-ups. The earlier hand-written IK pose engine was removed.
-
-## Swing animation (side blow)
-
-The swing uses the `Left_Slash` clip (Meshy animation library, action 97), stored on its own in `assets/dwarf_extra.glb`
-(animation only, 58 KB; made by stripping the mesh from the Meshy export). It binds to the dwarf by bone name. In the ready
-stance he holds the hammer by the butt with both hands, low and centred; the blow swings in from his side and lands at
-`TIMING.swing.hit` (0.5 s). Other candidates tried: Heavy Hammer Swing (overhead), Golf Drive, Reaping Swing, Charged Slash.
-The hammer follows the forearms (`HAMMER_BUTT`, `HAMMER_TILT` in `scene3d.js`).
+`assets/dwarf.glb` carries six hand-keyed clips made in Blender (`docs/BLENDER_SWING.md`): `swing_ready`, `swing_hit`,
+`squat_ready`, `squat_hit`, `pushup_ready`, `pushup_hit`. They also animate a `Hammer` bone; `Gnome` in `scene3d.js` plays them
+with a `THREE.AnimationMixer` and copies the `Hammer` bone's transform to the hammer model every frame (`HAMMER_FIX` maps the
+model's axes onto the bone's). The impact lands at `TIMING[ex].hit` seconds into a strike clip (keep equal to `GNOME_TIMING`
+in `gnome.js`, which the game's damage uses). Earlier approaches (Meshy mocap clips, code-driven IK) were removed.
