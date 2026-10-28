@@ -3,6 +3,8 @@
 // If WebGL or the models fail to load, the old 2D canvases stay visible (body.no3d); the pose pipeline is untouched.
 (function () {
  const $ = id => document.getElementById(id);
+ // the page may be embedded without the <body> attributes from index.html
+ document.body.dataset.scr = document.body.dataset.scr || 'menu'; document.body.dataset.mode = document.body.dataset.mode || 'local';
  let wantEx = null, M = null, solo = null, grp = null, groupObj = null, last = performance.now(), soloId = null;
  const gid = () => (typeof stageGnomeId === 'function' ? stageGnomeId() : 'me');
 
