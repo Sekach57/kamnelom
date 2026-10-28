@@ -6,6 +6,7 @@ import { clone as cloneRig } from './vendor/three/SkeletonUtils.js';
 // and "group" (looking down on a ring of gnomes around one boulder). Animation is procedural on the
 // skeleton, driven by the same timing the 2D game uses (wind-up, hit, recover).
 const TINTS = ['#ffffff', '#ffd2b8', '#bcd0ff', '#cdeec0', '#ffe49a', '#e2c4ff', '#ffb0bd', '#a8f0e0'];
+const LEAN_AXIS = new THREE.Vector3(1, 0, 0);
 const sstep = k => { k = Math.min(1, Math.max(0, k)); return k * k * (3 - 2 * k) };
 // hammer path for a swing, t seconds after the strike starts; grip point `g` and shaft direction `a` (butt to head), in model units in front of him (+z forward)
 const SW = [[0, [0, .5, .3], [0, -.9, .45]], [.24, [0, 1.12, -.12], [0, .92, -.4]], [.5, [0, .62, .46], [0, -.6, .8]], [.68, [0, .55, .5], [0, -.7, .7]], [1.2, [0, .5, .3], [0, -.9, .45]]];
@@ -66,7 +67,7 @@ const HAIR = ['#6b3a1e', '#a8321f', '#2b2430', '#8d8a90', '#d9c9a0', '#4a3a28'],
 // that take TIMING[ex].hit seconds so the visual blow and the game's damage coincide.
 const CLIPS = {
  // Left_Slash (Meshy library): hammer held by the butt in both hands, low and centred; the blow comes from the side
- swing: { ready: { clip: 'Axe_Stance', loop: true }, strike: { clip: 'Heavy_Hammer_Swing', from: .75, to: 1.72, end: 1.8 } },
+ swing: { ready: { clip: 'Idle', loop: true }, procedural: true },
  squat: { ready: { clip: 'air_squat', time: 0 }, strike: { clip: 'air_squat', from: .5, to: 1.45, end: 1.83 } },
  pushup: { ready: { clip: 'push_up', time: 0 }, strike: { clip: 'push_up', from: 0, to: 1.3, end: 1.5 } },
 };
@@ -108,6 +109,7 @@ class Gnome {
  setExercise(ex) { if (CLIPS[ex] && ex !== this.exercise) { this.exercise = ex; this.ready() } }
  strike(ex, now) {
   if (ex !== this.exercise) this.setExercise(ex);
+  if (CLIPS[this.exercise].procedural) { this.hitAt = now; this.hitDone = false; this.strikeAct = null; return }
   const c = CLIPS[this.exercise].strike, a = this.act(c.clip, c.clip); a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.time = c.from; a.timeScale = (c.to - c.from) / TIMING[this.exercise].hit;
   this.strikeAct = a; this.go(a, .12); this.hitAt = now; this.hitDone = false; this.strikeUntil = now + (c.end - c.from) / a.timeScale;
  }
@@ -126,10 +128,16 @@ class Gnome {
   // overhead blow: the hammer follows a hand-authored path (ready, raised behind the head, slammed down, back), both arms are solved onto it
   const t = this.hitDone === undefined || this.hitAt < -5 ? 99 : now - this.hitAt, P = swingPath(t);
   const axis = P.a.clone().normalize(), hipsL = rl('Hips').divideScalar(S), butt = P.g.clone().add(V(hipsL.x, 0, hipsL.z)).multiplyScalar(S); // path is relative to where the mocap puts his pelvis
+  // torso follows the blow: leans back as the hammer rises, folds forward on the slam
+  if (CLIPS[this.exercise].procedural) {
+   const lean = t < .24 ? .3 * sstep(t / .24) : t < .5 ? .3 - .85 * sstep((t - .24) / .26) : t < 1.2 ? -.55 * (1 - sstep((t - .5) / .7)) : 0;
+   for (const [n, k] of [['Spine', .4], ['Spine01', .35], ['Spine02', .25]]) { const b = this.b[n]; if (b) b.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(LEAN_AXIS, lean * k)) }
+   this.model.updateMatrixWorld(true);
+  }
   const hmq = this.model.getWorldQuaternion(new THREE.Quaternion());
   if (this.hold > .02) {
    const gR = butt.clone().addScaledVector(axis, .1 * Lw), gL = butt.clone().addScaledVector(axis, .3 * Lw), toW = p => root.localToWorld(p.clone());
-   const tgt = (n, g) => toW(rl(n).lerp(g, Math.min(1, this.hold * 1.2)));
+   const chest = rl('Spine02'), tgt = (n, g) => { const p = rl(n).lerp(g, Math.min(1, this.hold * 1.2)); p.z = Math.max(p.z, chest.z + .16 * S); return toW(p) }; // keep the hands in front of the chest, not inside it
    this.armIK('Right', tgt('RightHand', gR), V(-1, -.8, -.3).applyQuaternion(hmq)); this.armIK('Left', tgt('LeftHand', gL), V(1, -.8, -.3).applyQuaternion(hmq));
   }
   if (this.hold > .02) { // the arms may fall short of the path: the hammer always ends up in the hands that were actually solved
