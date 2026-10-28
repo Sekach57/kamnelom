@@ -51,6 +51,6 @@ const assert = require('node:assert'), { createApp } = require('./app.js');
  let f = await fetch(sb + '/'); assert.equal(f.status, 200); assert(f.headers.get('content-type').startsWith('text/html')); assert((await f.text()).includes('Камнелом'));
  f = await fetch(sb + '/vendor/mediapipe/wasm/vision_wasm_internal.wasm', { method: 'HEAD' }); assert.equal(f.headers.get('content-type'), 'application/wasm'); f = await fetch(sb + '/vendor/mediapipe/vision_bundle.mjs', { method: 'HEAD' }); assert(f.headers.get('content-type').startsWith('text/javascript'));
  for (const bad of ['/../server/app.js', '/%2e%2e/server/app.js', '/..%2fserver%2fapp.js', '/nope.txt']) { f = await fetch(sb + bad); assert([400, 404].includes(f.status), bad + ' -> ' + f.status) }
- f = await fetch(sb + '/api/nothing'); assert.equal(f.status, 404); assert.equal((await fetch(sb + '/health')).status, 200); await site.close();
+ f = await fetch(sb + '/api/nothing'); assert.equal(f.status, 404); assert.equal((await fetch(sb + '/health')).status, 200); assert.equal((await fetch(sb + '/health', { method: 'HEAD' })).status, 200, 'HEAD works for health checks'); await site.close();
  await app.close(); console.log('PASS: server: identity (hashed secret, login, nick), reps (dedupe, plausibility), leaderboard, groups with live stream, CORS, limits, static site.');
 })().catch(e => { console.error(e); process.exit(1) });

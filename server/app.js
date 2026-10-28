@@ -146,11 +146,11 @@ function createApp(options = {}) {
     res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' }); res.write(`retry: 3000\ndata: ${JSON.stringify(state)}\n\n`);
     set.add(res); sseCount++; const beat = setInterval(() => res.write(': hb\n\n'), 20e3); req.on('close', () => { clearInterval(beat); if (set.delete(res)) sseCount--; if (!set.size) streams.delete(id) }); return;
    }
-   const r = routes.find(x => x.method === req.method && x.re.test(url.pathname));
+   const r = routes.find(x => x.method === (req.method === 'HEAD' ? 'GET' : req.method) && x.re.test(url.pathname));
    if (!r && o.staticDir && ['GET', 'HEAD'].includes(req.method) && !url.pathname.startsWith('/api/')) return serveStatic(req, res, url);
    if (!r) throw err(404, 'not_found', 'Не найдено.');
    limit('all:' + clientKey(req), 300, 60e3);
-   const body = req.method === 'GET' ? {} : await readBody(req); send(res, 200, r.fn(req, body, url, url.pathname.match(r.re).groups || {}));
+   const body = ['GET', 'HEAD'].includes(req.method) ? {} : await readBody(req); send(res, 200, r.fn(req, body, url, url.pathname.match(r.re).groups || {}));
   } catch (e) { if (!res.headersSent) send(res, e.status || 500, { error: e.code || 'server_error', message: e.status ? e.message : 'Ошибка сервера.' }); else res.end(); if (!e.status) console.error(e) }
  });
  server.on('close', () => { clearInterval(sweep); db.close() });
