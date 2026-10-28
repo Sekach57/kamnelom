@@ -6,7 +6,7 @@ import { clone as cloneRig } from './vendor/three/SkeletonUtils.js';
 // and "group" (looking down on a ring of gnomes around one boulder). Animation is procedural on the
 // skeleton, driven by the same timing the 2D game uses (wind-up, hit, recover).
 const TINTS = ['#ffffff', '#ffd2b8', '#bcd0ff', '#cdeec0', '#ffe49a', '#e2c4ff', '#ffb0bd', '#a8f0e0'];
-const HAMMER_LEN = .72, HAMMER_BUTT = .1; // butt end sticks out this fraction of the length behind the right hand
+const HAMMER_LEN = .72, HAMMER_BUTT = .08, HAMMER_TILT = 0; // butt sticks out this fraction of the length behind the hands; tilt tips the shaft off the forearm line (radians) // butt end sticks out this fraction of the length behind the right hand
 const TIMING = { squat: { hit: .4 }, swing: { hit: .5 }, pushup: { hit: .6 } }; // model units; grip = fraction of the length from the butt
 const ease = k => k * k * (3 - 2 * k);
 const hash = s => { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) / 4294967295 };
@@ -15,7 +15,8 @@ let assets = null;
 function loadAssets() {
  return assets || (assets = (async () => {
   const loader = new GLTFLoader(), get = u => new Promise((ok, bad) => loader.load(u, ok, undefined, bad));
-  const [g, b, h] = await Promise.all([get('assets/dwarf.glb'), get('assets/boulder.glb'), get('assets/hammer.glb')]);
+  const [g, b, h, x] = await Promise.all([get('assets/dwarf.glb'), get('assets/boulder.glb'), get('assets/hammer.glb'), get('assets/dwarf_extra.glb')]);
+  g.animations = [...g.animations, ...x.animations]; // same bone names, so clips bind to the dwarf by name
   return { gnome: g, boulder: b, hammer: h };
  })());
 }
@@ -56,7 +57,8 @@ const HAIR = ['#6b3a1e', '#a8321f', '#2b2430', '#8d8a90', '#d9c9a0', '#4a3a28'],
 // ("ready"), and the part of a clip played for one rep: it starts at `from` and its impact lands at `to`, `speed` makes
 // that take TIMING[ex].hit seconds so the visual blow and the game's damage coincide.
 const CLIPS = {
- swing: { ready: { clip: 'Axe_Stance', loop: true }, strike: { clip: 'Heavy_Hammer_Swing', from: .75, to: 1.72, end: 1.8 } },
+ // Left_Slash (Meshy library): hammer held by the butt in both hands, low and centred; the blow comes from the side
+ swing: { ready: { clip: 'Left_Slash', time: .05 }, strike: { clip: 'Left_Slash', from: .15, to: .82, end: .9 } },
  squat: { ready: { clip: 'air_squat', time: 0 }, strike: { clip: 'air_squat', from: .5, to: 1.45, end: 1.83 } },
  pushup: { ready: { clip: 'push_up', time: 0 }, strike: { clip: 'push_up', from: 0, to: 1.3, end: 1.5 } },
 };
@@ -78,7 +80,7 @@ class Gnome {
   this.b = bones; this.hold = 1; this.holdGoal = 1; this.off = 0;
   this.mixer = new THREE.AnimationMixer(this.model); this.clips = {}; for (const c of src.animations) this.clips[c.name] = c; this.acts = {};
   this.exercise = null; this.cur = null; this.phase = hash(id) * 6; this.hitAt = -10; this.hitDone = true; this.onHit = null; this.dmg = 1;
-  this.mixer.addEventListener('finished', e => { if (e.action === this.strikeAct) this.ready() });
+  this.mixer.addEventListener('finished', e => { if (e.action === this.strikeAct && this.strikeUntil) { this.strikeUntil = 0; this.ready() } });
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(1.3 * scale, 1.3 * scale), new THREE.MeshBasicMaterial({ map: radial('rgba(0,0,0,.6)', 'rgba(0,0,0,0)'), transparent: true, depthWrite: false }));
   sh.rotation.x = -Math.PI / 2; sh.position.y = .01; this.root.add(sh);
   this.setExercise('swing');
@@ -98,20 +100,23 @@ class Gnome {
  strike(ex, now) {
   if (ex !== this.exercise) this.setExercise(ex);
   const c = CLIPS[this.exercise].strike, a = this.act(c.clip); a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.time = c.from; a.timeScale = (c.to - c.from) / TIMING[this.exercise].hit;
-  this.strikeAct = a; this.go(a, .12); this.hitAt = now; this.hitDone = false;
+  this.strikeAct = a; this.go(a, .12); this.hitAt = now; this.hitDone = false; this.strikeUntil = now + (c.end - c.from) / a.timeScale;
  }
  update(now, dt) {
   this.mixer.update(dt);
+  if (this.strikeUntil && now >= this.strikeUntil) { this.strikeUntil = 0; this.ready() }
   this.off += (STAND_OFFSET[this.exercise] - this.off) * (1 - Math.exp(-dt * 4)); this.model.position.z = this.off * this.S;
   if (!this.hitDone && now - this.hitAt >= TIMING[this.exercise].hit) { this.hitDone = true; this.onHit && this.onHit(this) }
   // the hammer is in the right hand for swings and lies on the floor for squats and push-ups; it glides between the two
   this.hold += (this.holdGoal - this.hold) * (1 - Math.exp(-dt * 6));
   const rh = this.b.RightHand, lh = this.b.LeftHand; if (!rh || !lh) return;
   this.root.updateMatrixWorld(true);
-  // both hands on the handle: it runs from the right hand through the left, the head beyond the left hand
+  // both hands grip the butt of the handle: the shaft continues along the forearms, the head beyond the hands
   const rp = this.root.worldToLocal(rh.getWorldPosition(new THREE.Vector3())), lp = this.root.worldToLocal(lh.getWorldPosition(new THREE.Vector3()));
-  const axis = lp.clone().sub(rp); if (axis.lengthSq() < 1e-6) axis.set(0, 1, 0); axis.normalize();
-  const Lw = HAMMER_LEN * this.S, butt = rp.clone().addScaledVector(axis, -HAMMER_BUTT * Lw);
+  const rf = this.b.RightForeArm, lf = this.b.LeftForeArm, fa = f => this.root.worldToLocal(f.getWorldPosition(new THREE.Vector3()));
+  const axis = rp.clone().sub(fa(rf)).add(lp.clone().sub(fa(lf))); if (axis.lengthSq() < 1e-6) axis.set(0, 1, 0); axis.normalize();
+  axis.applyAxisAngle(new THREE.Vector3(0, 1, 0).cross(axis).normalize(), -HAMMER_TILT);
+  const Lw = HAMMER_LEN * this.S, grip = rp.clone().add(lp).multiplyScalar(.5), butt = grip.clone().addScaledVector(axis, -HAMMER_BUTT * Lw);
   const side = new THREE.Vector3(0, 1, 0).cross(axis); if (side.lengthSq() < 1e-4) side.set(1, 0, 0); side.normalize();
   const up = axis.clone().cross(side).normalize(); // flat face of the head looks along `side`
   const inHandQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis.clone().negate(), up, side));
