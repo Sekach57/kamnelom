@@ -16,6 +16,7 @@ const tick = () => new Promise(r => setTimeout(r, 0));
  assert.equal(screen.run('link.open'), true); assert.equal(phone.run('link.open'), true); assert.equal(screen.el('pairPanel').hidden, true, 'panel closes after connecting'); assert.equal(phone.el('pairPanel').hidden, true);
  const intruder = harness({ Peer: broker.Peer }); await intruder.run(`joinRoom(${JSON.stringify(parseRoom(url))})`); await tick(); await tick(); await tick(); assert.equal(screen.run('link.conn === link.conn && link.open'), true, 'a second phone does not kick the first'); intruder.run('closeLink()');
  assert.notEqual(parseRoom(url), require('../dist/remote.js').newRoomId(), 'room ids are random');
+ assert.equal(screen.run('document.body.dataset.mode'), 'screen'); assert.equal(phone.run('document.body.dataset.mode'), 'phone'); assert(screen.el('linkStatus').textContent.includes('Телефон подключён'), screen.el('linkStatus').textContent); assert(phone.el('linkStatus').textContent.includes('Подключено к экрану')); assert.equal(phone.el('camera').disabled, false, 'phone may start the camera once linked');
  const label = () => screen.el('modeLabel').textContent;
 
  // --- phone runs the camera flow; the screen mirrors progress and then the game ---
@@ -44,7 +45,9 @@ const tick = () => new Promise(r => setTimeout(r, 0));
  // --- manual (serverless) pairing still works ---
  const s2 = harness({ rtc: FakePC }), p2 = harness({ rtc: FakePC }); await s2.run('startScreenManual()'); await p2.run(`startPhone(${JSON.stringify(s2.el('pairCode').value)})`); s2.el('pairPaste').value = p2.el('pairCode').value; await s2.run("$('pairApply').onclick()"); await tick(); await tick();
  await p2.run('openCamera()'); await s2.run("$('reset').onclick()"); await tick(); assert.equal(p2.run('stream'), null, 'reset command stops the phone camera'); assert(p2.stopped > 0);
+ // --- an unlinked phone cannot start the camera: the game would have nowhere to go ---
+ const lone = harness({ Peer: broker.Peer }); await lone.run('startPhone(null)'); assert.equal(lone.run('document.body.dataset.mode'), 'phone'); assert.equal(lone.el('camera').disabled, true); assert(lone.el('camera').textContent.includes('подключись'));
  // --- screen role can be left ---
- await s2.run("$('camera').onclick()"); assert.equal(s2.run('role'), 'solo'); assert.equal(s2.run('link'), null);
+ await s2.run("$('camera').onclick()"); assert.equal(s2.run('role'), 'solo'); assert.equal(s2.run('link'), null); assert.equal(s2.run('document.body.dataset.mode'), 'local');
  console.log('PASS: signal codes round-trip and reject garbage; screen/phone pairing; calibration progress, game hits, hints, pause/reset commands and count resync over the link; link drop leaves the phone counting.');
 })().catch(e => { console.error(e); process.exitCode = 1 });

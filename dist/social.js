@@ -4,7 +4,8 @@
 const API_BASE = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v) } catch { return d } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch { } } };
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const EX_NAME = { swing: 'Свинги', squat: 'Приседания', pushup: 'Отжимания' }, EX_ICON = { swing: '⚒', squat: '⇩', pushup: '⇧' };
+const EX_NAME = { squat: 'Приседания', swing: 'Свинги', pushup: 'Отжимания' }, EX_ICON = { swing: '⚒', squat: '⇩', pushup: '⇧' };
+function onView(name) { if (name === 'board') loadBoard(); else if (name === 'me' || name === 'party') refreshMe() }
 let account = store.get('kamnelom.account', null), repState = store.get('kamnelom.reps', { seq: 0, pending: {}, inflight: null }), activeGroup = store.get('kamnelom.group', null);
 let accountBusy = null, flushTimer = null, flushing = false, backoff = 0, boardTab = 'total', online = null, myStats = null;
 
@@ -34,7 +35,7 @@ async function refreshMe() { if (!account) return; try { const p = await api('/a
 function renderProfile() {
  const nick = $('nick'); if (nick && account && document.activeElement !== nick) nick.value = account.nick;
  const c = $('meGnome'); if (c) { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.save(); x.translate(c.width / 2, c.height - 6); x.scale(.62, .62); drawGnome(x, myLook, { tool: 'none' }); x.restore() }
- const s = $('meStats'); if (s) s.textContent = !account ? 'Профиль создаётся при первом подключении к серверу.' : myStats ? Object.entries(EX_NAME).map(([k, n]) => `${EX_ICON[k]} ${n}: ${myStats[k].reps} (валун №${myStats[k].rocks + 1}, ${myStats[k].hp}/20)`).join(' · ') : 'ID: ' + account.id;
+ const s = $('meStats'); if (s) s.textContent = !account ? 'Профиль создаётся при первом подключении к серверу.' : myStats ? Object.entries(EX_NAME).map(([k, n]) => `${EX_ICON[k]} ${n}: ${myStats[k].reps} повторов, ${myStats[k].points} очков, валун №${myStats[k].rocks + 1} (${myStats[k].hp}/20)`).join('\n') : 'ID: ' + account.id;
  const l = $('loginLink'); if (l) { l.value = loginLink(); const q = $('loginQr'); if (account && q && l.value) drawQrTo(q, l.value).catch(() => { }) }
 }
 
@@ -70,8 +71,8 @@ async function loadBoard(tab = boardTab) {
  try {
   const r = await api('/api/leaderboard?exercise=' + tab + '&limit=50'); status.textContent = r.rows.length ? '' : 'Пока никого. Сделай первый повтор!';
   list.innerHTML = r.rows.map(x => {
-   const stage = r.exercise === 'total' ? Object.entries(EX_NAME).map(([k]) => `<span title="${EX_NAME[k]}">${EX_ICON[k]} ${x.by[k].reps}</span>`).join('') : `<span>валун №${x.rocks + 1}</span><span>${x.hp}/20</span>`;
-   return `<li class="${account && account.id === x.id ? 'me' : ''}"><b class="rank">${x.rank}</b><span class="face" data-id="${esc(x.id)}"></span><span class="who">${esc(x.nick)}</span><span class="stage">${stage}</span><strong class="reps">${x.reps}</strong></li>`;
+   const stage = r.exercise === 'total' ? Object.entries(EX_NAME).map(([k]) => `<span title="${EX_NAME[k]}: валун №${x.by[k].rocks + 1}">${EX_ICON[k]} ${x.by[k].reps}</span>`).join('') + `<span>валун №${x.rocks + 1}</span>` : `<span>${x.reps} повторов</span><span>валун №${x.rocks + 1}, ${x.hp}/20</span>`;
+   return `<li class="${account && account.id === x.id ? 'me' : ''}"><b class="rank">${x.rank}</b><span class="face" data-id="${esc(x.id)}"></span><span class="who">${esc(x.nick)}</span><span class="stage">${stage}</span><strong class="reps" title="очки">${x.points}</strong></li>`;
   }).join('');
   for (const f of list.querySelectorAll?.('.face') || []) f.appendChild(miniGnome(f.dataset.id));
  } catch { status.textContent = 'Таблица недоступна: нет связи с сервером.' }
@@ -89,7 +90,7 @@ async function openGroup(id) {
  try { const g = await api('/api/groups/' + encodeURIComponent(id)); showGroup(g); $('groupStatus').textContent = '' } catch (e) { $('groupStatus').textContent = e.status === 404 ? 'Группа не найдена: ссылка устарела.' : 'Нет связи с сервером.' }
 }
 function showGroup(g) {
- closeStream(); group = g; $('groupPanel').hidden = false; $('groupTitle').textContent = g.name; $('groupInvite').value = groupLink(g.id); drawQrTo($('groupQr'), groupLink(g.id)).catch(() => { });
+ goView('party'); closeStream(); group = g; $('groupPanel').hidden = false; $('groupTitle').textContent = g.name; $('groupInvite').value = groupLink(g.id); drawQrTo($('groupQr'), groupLink(g.id)).catch(() => { });
  scene.t0 = performance.now() / 1000; scene.hit = {}; scene.counts = {}; renderGroup(); updateActive();
  try { groupStream = new EventSource(API_BASE + '/api/groups/' + encodeURIComponent(g.id) + '/stream'); groupStream.onmessage = e => { try { group = JSON.parse(e.data); renderGroup() } catch { } } } catch { }
  cancelAnimationFrame(scene.raf); scene.raf = requestAnimationFrame(sceneTick); $('groupPanel').scrollIntoView?.({ behavior: 'smooth', block: 'start' });
@@ -100,13 +101,13 @@ function isMember() { return !!(group && account && group.members.some(m => m.id
 function updateActive() { const b = $('groupActive'), j = $('groupJoin'); if (!group) return; j.hidden = isMember(); b.hidden = !isMember(); b.textContent = activeGroup === group.id ? '✓ Повторы идут в эту группу (выключить)' : 'Тренироваться для этой группы' }
 function renderGroup() {
  if (!group) return; const pct = Math.min(100, Math.round(group.total / group.goal * 100)), max = Math.max(1, ...group.members.map(m => m.total));
- $('groupProgress').textContent = group.done ? `Башня готова! ${group.total} повторов` : `${group.total} из ${group.goal} повторов · ${pct}%`; $('groupBar').style.width = pct + '%';
- $('groupMembers').innerHTML = group.members.map(m => `<li><span class="who">${esc(m.nick)}</span><span class="bar"><i style="width:${Math.round(m.total / max * 100)}%"></i></span><span class="parts">${Object.keys(EX_NAME).filter(k => m.counts[k]).map(k => EX_ICON[k] + ' ' + m.counts[k]).join(' ')}</span><strong>${m.total}</strong></li>`).join('');
+ $('groupProgress').textContent = group.done ? `Башня готова! ${group.total} очков` : `${group.total} из ${group.goal} очков · ${pct}%`; $('groupBar').style.width = pct + '%';
+ $('groupMembers').innerHTML = group.members.map(m => `<li><span class="who">${esc(m.nick)}</span><span class="bar"><i style="width:${Math.round(m.total / max * 100)}%"></i></span><span class="parts">${Object.keys(EX_NAME).filter(k => m.counts[k]).map(k => EX_ICON[k] + ' ' + m.counts[k]).join(' ')}</span><strong title="очки">${m.total}</strong></li>`).join('');
  for (const m of group.members) { const prev = scene.counts[m.id] ?? m.total; if (m.total > prev) scene.hit[m.id] = { at: performance.now() / 1000, ex: Object.keys(m.counts).reduce((a, k) => m.counts[k] > (m.counts[a] || 0) ? k : a, 'swing') }; scene.counts[m.id] = m.total }
  updateActive();
 }
 async function joinGroup() { try { await ensureAccount(); showGroup(await api('/api/groups/' + encodeURIComponent(group.id) + '/join', { method: 'POST', auth: true })); refreshMe() } catch (e) { $('groupStatus').textContent = e.offline ? 'Нет связи с сервером.' : e.message } }
-function toggleActive() { activeGroup = activeGroup === group.id ? null : group.id; store.set('kamnelom.group', activeGroup); updateActive(); if (activeGroup) say('Повторы идут в группу «' + group.name + '». Включи камеру и тренируйся.') }
+function toggleActive() { activeGroup = activeGroup === group.id ? null : group.id; store.set('kamnelom.group', activeGroup); updateActive(); if (activeGroup) say('Повторы идут в группу «' + group.name + '». Открой раздел «Игра», включи камеру и тренируйся.') }
 
 // Group scene: the camera pulls back from the tower to show every gnome and their share of the work.
 function sceneTick() {
@@ -140,8 +141,8 @@ renderProfile();
 async function handleHash() {
  const h = location.hash, login = /^#login=(p-[a-z0-9]{8})\.([A-Za-z0-9_-]{20,64})$/.exec(h), grp = /^#group=(g-[a-z0-9]{8})$/.exec(h);
  if (!login && !grp) return; history.replaceState(null, '', location.pathname + location.search);
- if (login) { try { await loginFromLink(login[1], login[2]) } catch { } } else await ensureAccount().catch(() => { });
- if (grp) openGroup(grp[1]);
+ if (login) { goView('me'); try { await loginFromLink(login[1], login[2]) } catch { } } else await ensureAccount().catch(() => { });
+ if (grp) { goView('party'); openGroup(grp[1]) }
 }
 window.addEventListener('hashchange', handleHash);
 (async function start() {
