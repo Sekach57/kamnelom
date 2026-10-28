@@ -44,3 +44,12 @@ this repository and must not be committed. Regenerate with the Meshy API (`/open
 with a `THREE.AnimationMixer` and copies the `Hammer` bone's transform to the hammer model every frame (`HAMMER_FIX` maps the
 model's axes onto the bone's). The impact lands at `TIMING[ex].hit` seconds into a strike clip (keep equal to `GNOME_TIMING`
 in `gnome.js`, which the game's damage uses). Earlier approaches (Meshy mocap clips, code-driven IK) were removed.
+
+## Moving between exercises
+
+`assets/dwarf_moves.glb` (animation only, 270 KB) holds Meshy library clips: `Slow_Orc_Walk`, `idle_to_push_up`, `push_up_to_idle`
+and `Male_Bend_Over_Pick_Up`. Each exercise has a spot (`SPOT` in `scene3d.js`); changing exercise runs a planned sequence
+(`Gnome.plan`): put the hammer down (the pick-up clip played backwards) if he holds it, get up from a push-up, walk to the new spot
+facing the way he walks, then pick the hammer up (swing) or lie down (push-up). Squats and push-ups are done without the hammer,
+which lies on the floor at `HFLOOR`. In the crew view dwarves do not walk (`instant`). Squat blow: clip played slower so that its
+impact falls at `TIMING.squat.hit` (0.65 s).

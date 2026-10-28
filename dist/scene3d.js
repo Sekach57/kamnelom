@@ -5,7 +5,7 @@ import { clone as cloneRig } from './vendor/three/SkeletonUtils.js';
 // 3D quarry scene: gnomes (rigged GLB) hit a boulder (GLB). Two cameras: "solo" (three-quarter view)
 // and "group" (looking down on a ring of gnomes around one boulder). Animation: keyframed clips, see CLIPS below.
 const HAMMER_LEN = .72; // model units, along the handle
-const TIMING = { squat: { hit: .4 }, swing: { hit: .5 }, pushup: { hit: .6 } }; // seconds from the start of a strike clip to its impact
+const TIMING = { squat: { hit: .65 }, swing: { hit: .5 }, pushup: { hit: .6 } }; // seconds from the start of a strike clip to its impact
 const hash = s => { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) / 4294967295 };
 const TINTS = ['#ffffff', '#ffd2b8', '#bcd0ff', '#cdeec0', '#ffe49a', '#e2c4ff', '#ffb0bd', '#a8f0e0'];
 
@@ -13,7 +13,8 @@ let assets = null;
 function loadAssets() {
  return assets || (assets = (async () => {
   const loader = new GLTFLoader(), get = u => new Promise((ok, bad) => loader.load(u, ok, undefined, bad));
-  const [g, b, h] = await Promise.all([get('assets/dwarf.glb'), get('assets/boulder.glb'), get('assets/hammer.glb')]);
+  const [g, b, h, m] = await Promise.all([get('assets/dwarf.glb'), get('assets/boulder.glb'), get('assets/hammer.glb'), get('assets/dwarf_moves.glb')]);
+  g.animations = [...g.animations, ...m.animations]; // same bone names, so the clips bind to the dwarf by name
   return { gnome: g, boulder: b, hammer: h };
  })());
 }
@@ -52,11 +53,23 @@ export function lookFor(id) {
 const HAIR = ['#6b3a1e', '#a8321f', '#2b2430', '#8d8a90', '#d9c9a0', '#4a3a28'], METAL = ['#ffffff', '#c9d3ff', '#ffd9a0', '#d8ffe6', '#ffc4c4'];
 
 // Hand-keyed clips from Blender (docs/BLENDER_SWING.md): per exercise a looping ready stance and a one-rep strike clip.
-// The clips also animate a `Hammer` bone; the hammer model copies that bone's transform, so both fists stay on the handle.
-// The impact lands at TIMING[ex].hit seconds into the strike clip (keep in step with GNOME_TIMING in gnome.js).
+// The clips also animate a `Hammer` bone; in the swing the hammer model copies that bone, so both fists stay on the handle.
+// Moving between exercises uses Meshy library clips (assets/dwarf_moves.glb): walking, getting down into / up from a push-up,
+// and picking the hammer up / putting it down (the pick-up clip played forwards or backwards).
+// The impact lands at TIMING[ex].hit seconds into a strike clip (keep in step with GNOME_TIMING in gnome.js); the strike clip is
+// played faster or slower so that its own impact time (IMPACT) falls there.
 const CLIPS = { swing: { ready: 'swing_ready', strike: 'swing_hit' }, squat: { ready: 'squat_ready', strike: 'squat_hit' }, pushup: { ready: 'pushup_ready', strike: 'pushup_hit' } };
-const STAND_OFFSET = { swing: 0, squat: 0, pushup: -.95 }; // push-ups happen lying down toward the boulder, so he starts further back
-const HAMMER_FIX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2); // hammer.glb axes -> bone axes (+Y butt to head, +X face)
+const IMPACT = { swing: .5, squat: .4, pushup: .6 };
+const SPOT = { swing: [0, 0], squat: [-.9, -.2], pushup: [-.9, -.95] }; // where he stands, model units (+z towards the boulder); push-ups are done lying towards it
+const HFLOOR = [-.1, .05, .5], HAMMER_FIX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2); // hammer.glb axes -> bone axes (+Y butt to head, +X face)
+const WALK_SPEED = .55; // model units per second
+const PICK = { from: 0, to: 2.9, rate: 1.5, grab: 1.2 }; // pick-up clip segment, play rate, and the moment (s of play) the hand closes on the handle
+const lerpAngle = (a, b, k) => { let d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; return a + d * k };
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+function basisQuat(yAxis, xHint) { // orientation of the hammer: bone +Y = butt to head, +X = face
+ const y = yAxis.clone().normalize(), z = V3(0, 0, 0).crossVectors(xHint, y).normalize(), x = V3(0, 0, 0).crossVectors(y, z);
+ return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z)).multiply(HAMMER_FIX);
+}
 
 class Gnome {
  constructor(src, id, scale = 1) {
@@ -70,37 +83,88 @@ class Gnome {
   const hs = assets.hammer.scene.clone(true), hb = new THREE.Box3().setFromObject(hs), hsz = hb.getSize(new THREE.Vector3());
   hs.scale.setScalar(HAMMER_LEN * scale / Math.max(hsz.x, hsz.y, hsz.z)); hs.updateMatrixWorld(true); hs.position.sub(new THREE.Box3().setFromObject(hs).getCenter(new THREE.Vector3()));
   this.hammer = new THREE.Group(); this.hammer.add(hs); this.root.add(this.hammer); this.hs = hs;
-  this.b = bones; this.off = 0;
+  this.b = bones;
   this.mixer = new THREE.AnimationMixer(this.model); this.clips = {}; for (const c of src.animations) this.clips[c.name] = c; this.acts = {};
-  this.exercise = null; this.cur = null; this.hitAt = -10; this.hitDone = true; this.onHit = null; this.dmg = 1; this.strikeAct = null;
+  this.target = 'swing'; this.stance = null; this.cur = null; this.queue = []; this.step = null; this.strikeAct = null;
+  this.pos = [0, 0]; this.yaw = 0; this.hmode = 'bone'; this.hshow = null; this.hswitch = -9; this.clock = 0;
+  this.hitAt = -10; this.hitDone = true; this.onHit = null; this.dmg = 1;
   this.mixer.addEventListener('finished', e => { if (e.action === this.strikeAct) { this.strikeAct = null; this.ready() } });
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(1.3 * scale, 1.3 * scale), new THREE.MeshBasicMaterial({ map: radial('rgba(0,0,0,.6)', 'rgba(0,0,0,0)'), transparent: true, depthWrite: false }));
-  sh.rotation.x = -Math.PI / 2; sh.position.y = .01; this.root.add(sh);
+  sh.rotation.x = -Math.PI / 2; sh.position.y = .01; this.root.add(sh); this.shadow = sh;
   this.setExercise('swing');
  }
  act(name) { return this.acts[name] || (this.acts[name] = this.mixer.clipAction(this.clips[name])) }
- // switch to a clip with a short crossfade (the poses at clip joins match, so it is only a safety net)
+ // switch to a clip with a crossfade (the poses at clip joins mostly match, so it is a safety net)
  go(action, fade = .25) {
   action.enabled = true; action.setEffectiveWeight(1);
-  if (this.cur && this.cur !== action) { action.reset().play(); this.cur.crossFadeTo(action, fade, false) } else action.play();
+  if (this.cur && this.cur !== action) { action.play(); this.cur.crossFadeTo(action, fade, false) } else action.play();
   this.cur = action;
  }
- ready() { const a = this.act(CLIPS[this.exercise].ready); a.reset(); a.setLoop(THREE.LoopRepeat, Infinity); a.timeScale = 1; this.go(a, .3) }
- setExercise(ex) { if (CLIPS[ex] && ex !== this.exercise) { this.exercise = ex; this.strikeAct = null; this.ready() } }
+ setHammer(mode) { if (mode !== this.hmode) { this.hmode = mode; this.hswitch = this.clock } }
+ ready() {
+  const a = this.act(CLIPS[this.stance].ready); a.reset(); a.setLoop(THREE.LoopRepeat, Infinity); a.timeScale = 1; a.paused = false; this.go(a, .3);
+  this.setHammer(this.stance === 'swing' ? 'bone' : 'floor'); this.pos = SPOT[this.stance].slice(); this.moveTo = null;
+ }
+ setExercise(ex) {
+  if (!CLIPS[ex]) return; this.target = ex;
+  if (this.stance === null || this.instant) { this.stance = ex; this.ready() } // first call (and the crew view): just stand there, no walk
+ }
+ // the sequence of moves that takes him from one exercise's spot to another's
+ plan(from, to) {
+  const q = [], P = (name, o) => q.push({ name, ...o });
+  if (from === 'swing') P('Male_Bend_Over_Pick_Up', { from: PICK.to, to: PICK.from, rate: PICK.rate, hammer: [[0, 'hand'], [(PICK.to - 1.8) / PICK.rate - .1, 'hand'], [(PICK.to - 1.8) / PICK.rate + .25, 'floor']] });
+  if (from === 'pushup') P('push_up_to_idle', { from: 0, to: 2.75, rate: 1.3 });
+  const a = SPOT[from], b = SPOT[to];
+  if (a[0] !== b[0] || a[1] !== b[1]) P('Slow_Orc_Walk', { loop: true, dur: Math.hypot(b[0] - a[0], b[1] - a[1]) / WALK_SPEED, move: [a[0], a[1], b[0], b[1]] });
+  if (to === 'swing') P('Male_Bend_Over_Pick_Up', { from: PICK.from, to: PICK.to, rate: PICK.rate, hammer: [[0, 'floor'], [PICK.grab - .1, 'floor'], [PICK.grab + .3, 'hand']] });
+  if (to === 'pushup') P('idle_to_push_up', { from: 0, to: 2.55, rate: 1.2 });
+  this.queue = q; this.nextStance = to;
+ }
+ begin(st) { // start a queued step
+  this.step = st; st.e = 0; st.dur = st.dur || Math.abs(st.to - st.from) / st.rate; st.hi = 0;
+  const a = this.act(st.name); a.reset(); a.setLoop(st.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = true;
+  a.timeScale = st.loop ? 1 : 0; a.time = st.loop ? 0 : st.from; a.paused = false; this.go(a, .3); st.act = a;
+  if (st.hammer && st.hammer[0]) this.setHammer(st.hammer[0][1]);
+ }
  strike(ex, now) {
-  if (ex !== this.exercise) this.setExercise(ex);
-  const a = this.act(CLIPS[this.exercise].strike); a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.timeScale = 1;
-  this.strikeAct = a; this.go(a, .12); this.hitAt = now; this.hitDone = false;
+  if (ex !== this.target) this.setExercise(ex);
+  this.hitAt = now; this.hitDone = false; this.hitEx = ex;
+  if (this.step || this.queue.length || ex !== this.stance) return; // busy walking: the blow only counts, it is not animated
+  const a = this.act(CLIPS[this.stance].strike); a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.paused = false;
+  a.timeScale = IMPACT[this.stance] / TIMING[this.stance].hit; this.strikeAct = a; this.go(a, .12);
  }
  update(now, dt) {
+  this.clock += dt;
+  if (!this.step && !this.queue.length && this.stance !== this.target && !this.strikeAct) this.plan(this.stance, this.target);
+  if (!this.step && this.queue.length) this.begin(this.queue.shift());
+  const st = this.step;
+  if (st) {
+   st.e += dt; const k = Math.min(1, st.e / st.dur);
+   if (!st.loop) st.act.time = st.from + (st.to - st.from) * k;
+   if (st.hammer) while (st.hi + 1 < st.hammer.length && st.e >= st.hammer[st.hi + 1][0]) { st.hi++; this.setHammer(st.hammer[st.hi][1]) }
+   if (st.move) { const [x0, z0, x1, z1] = st.move; this.pos = [x0 + (x1 - x0) * k, z0 + (z1 - z0) * k]; this.faceTo = Math.atan2(x1 - x0, z1 - z0) } else this.faceTo = 0;
+   if (k >= 1) { this.step = null; if (!this.queue.length) { this.stance = this.nextStance; this.ready() } }
+  } else this.faceTo = 0;
+  this.yaw = lerpAngle(this.yaw, this.faceTo || 0, 1 - Math.exp(-dt * 7));
+  this.model.rotation.y = this.yaw; this.model.position.set(this.pos[0] * this.S, 0, this.pos[1] * this.S);
   this.mixer.update(dt);
-  this.off += (STAND_OFFSET[this.exercise] - this.off) * (1 - Math.exp(-dt * 4)); this.model.position.z = this.off * this.S;
-  if (!this.hitDone && now - this.hitAt >= TIMING[this.exercise].hit) { this.hitDone = true; this.onHit && this.onHit(this) }
-  const hb = this.b.Hammer; if (!hb) return;
-  this.root.updateMatrixWorld(true);
-  const wq = hb.getWorldQuaternion(new THREE.Quaternion()), rq = this.root.getWorldQuaternion(new THREE.Quaternion()).invert();
-  this.hammer.position.copy(this.root.worldToLocal(hb.getWorldPosition(new THREE.Vector3())));
-  this.hammer.quaternion.copy(rq.multiply(wq).multiply(HAMMER_FIX));
+  if (!this.hitDone && now - this.hitAt >= TIMING[this.hitEx || this.stance].hit) { this.hitDone = true; this.onHit && this.onHit(this) }
+  this.placeHammer(dt);
+ }
+ placeHammer(dt) {
+  const L = HAMMER_LEN * this.S, root = this.root; root.updateMatrixWorld(true);
+  let p, q;
+  if (this.hmode === 'bone' && this.b.Hammer) {
+   const hb = this.b.Hammer; p = root.worldToLocal(hb.getWorldPosition(new THREE.Vector3()));
+   q = root.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(hb.getWorldQuaternion(new THREE.Quaternion())).multiply(HAMMER_FIX);
+  } else if (this.hmode === 'hand') {
+   const h = root.worldToLocal(this.b.RightHand.getWorldPosition(new THREE.Vector3())), axis = V3(.1, -1, .3).normalize();
+   p = h.addScaledVector(axis, .4 * L); q = basisQuat(axis, V3(1, 0, 0));
+  } else { p = V3(...HFLOOR).multiplyScalar(this.S); q = basisQuat(V3(1, 0, .1), V3(0, 1, 0)) }
+  if (!this.hshow) this.hshow = { p: p.clone(), q: q.clone() };
+  const blending = this.clock - this.hswitch < .45, w = blending || this.hmode === 'hand' ? 1 - Math.exp(-dt * 16) : 1;
+  this.hshow.p.lerp(p, w); this.hshow.q.slerp(q, w);
+  this.hammer.position.copy(this.hshow.p); this.hammer.quaternion.copy(this.hshow.q);
  }
 }
 
@@ -163,7 +227,7 @@ export function create(canvas, opts = {}) {
  function setGnomes(ids) {
   const want = new Set(ids);
   for (const [id, g] of gnomes) if (!want.has(id)) { scene.remove(g.root); gnomes.delete(id) }
-  for (const id of ids) if (!gnomes.has(id)) { const g = new Gnome(assets.gnome, id, group ? .95 : 1.6); g.onHit = hitLanded; gnomes.set(id, g); scene.add(g.root) }
+  for (const id of ids) if (!gnomes.has(id)) { const g = new Gnome(assets.gnome, id, group ? .95 : 1.6); g.instant = group; g.onHit = hitLanded; gnomes.set(id, g); scene.add(g.root) }
   layout();
  }
  const waves = [], waveMat = new THREE.MeshBasicMaterial({ color: '#ffb067', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
