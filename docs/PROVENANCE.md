@@ -18,6 +18,10 @@ https://strumok-pixel-river-a13.steadycivet22.chatgpt.site
 Запуск: npm run dev:rowing, затем http://localhost:4174.
 Проверка: npm run test:rowing.
 
+Добавлено после экспорта: `dist/vendor/mediapipe/` — `@mediapipe/tasks-vision` 1.1.1
+(npm, Apache-2.0, LICENSE рядом) и `pose_landmarker_lite.task` (Google, MediaPipe Models,
+SHA-256 в docs/POSE_MODEL.md). `dist/detector.js` и `tests/detector.cjs` удалены.
+
 Из экспорта исключены .git и хостинговая конфигурация .openai, идентификаторы
 аккаунта, git credentials и токены. Для другого репозитория они не нужны.
 Нет сторонних шрифтов/изображений/аудио: всё нарисовано или синтезировано кодом.
