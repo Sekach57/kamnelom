@@ -1,0 +1,37 @@
+name: Publish dist to gh-pages
+
+# Publishes the buildless dist/ folder to the gh-pages branch after tests pass.
+# GitHub Pages then serves it over HTTPS (needed for the iPhone camera).
+on:
+  push:
+    branches: [claude/serene-darwin-zg2ha6, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - run: npm run check
+      - name: Push dist/ to gh-pages
+        run: |
+          cp -r dist "$RUNNER_TEMP/site"
+          touch "$RUNNER_TEMP/site/.nojekyll"
+          cd "$RUNNER_TEMP/site"
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publish ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
