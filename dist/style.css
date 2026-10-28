@@ -13,3 +13,4 @@
 #debugHud{position:fixed;left:8px;bottom:8px;z-index:9999;background:#000c;border:1px solid #f7d36d88;border-radius:6px;padding:6px 8px;max-width:calc(100vw - 16px);pointer-events:none}
 #debugText{margin:0 0 4px;font:10px/1.45 ui-monospace,Menlo,monospace;color:#e8e8ee;white-space:pre-wrap}
 #debugChart{display:block;width:100%;max-width:360px;height:120px}.debug-toggle{display:block;font-size:11px;color:#c9c9d1;margin:0 0 12px}
+.debug-actions{display:flex;gap:6px;align-items:center;margin-top:6px;pointer-events:auto}.debug-actions button{padding:7px 9px;font-size:10px}#recInfo{font:10px ui-monospace,monospace;color:#c9c9d1}
