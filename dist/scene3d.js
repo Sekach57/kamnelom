@@ -6,7 +6,8 @@ import { clone as cloneRig } from './vendor/three/SkeletonUtils.js';
 // and "group" (looking down on a ring of gnomes around one boulder). Animation is procedural on the
 // skeleton, driven by the same timing the 2D game uses (wind-up, hit, recover).
 const TINTS = ['#ffffff', '#ffd2b8', '#bcd0ff', '#cdeec0', '#ffe49a', '#e2c4ff', '#ffb0bd', '#a8f0e0'];
-const HAMMER_LEN = .72, HAMMER_BUTT = .08, HAMMER_TILT = 0; // butt sticks out this fraction of the length behind the hands; tilt tips the shaft off the forearm line (radians) // butt end sticks out this fraction of the length behind the right hand
+const READY_AXIS = new THREE.Vector3(0, -.9, .45).normalize(), READY_BUTT = [0, .86, .3]; // ready stance: hammer head down in front of him; butt point in model units
+const HAMMER_LEN = .72; // butt sticks out this fraction of the length behind the hands; tilt tips the shaft off the forearm line (radians) // butt end sticks out this fraction of the length behind the right hand
 const TIMING = { squat: { hit: .4 }, swing: { hit: .5 }, pushup: { hit: .6 } }; // model units; grip = fraction of the length from the butt
 const ease = k => k * k * (3 - 2 * k);
 const hash = s => { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) / 4294967295 };
@@ -85,7 +86,8 @@ class Gnome {
   sh.rotation.x = -Math.PI / 2; sh.position.y = .01; this.root.add(sh);
   this.setExercise('swing');
  }
- act(name) { return this.acts[name] || (this.acts[name] = this.mixer.clipAction(this.clips[name])) }
+ // the ready stance and the strike may use the same clip, so each gets its own action (a clone) to be able to crossfade
+ act(key, clip) { return this.acts[key] || (this.acts[key] = this.mixer.clipAction(key === clip ? this.clips[clip] : this.clips[clip].clone())) }
  // switch to a clip with a short crossfade
  go(action, fade = .3) {
   action.enabled = true; action.setEffectiveWeight(1);
@@ -93,13 +95,13 @@ class Gnome {
   this.cur = action;
  }
  ready() {
-  const r = CLIPS[this.exercise].ready, a = this.act(r.clip); a.reset(); a.setLoop(r.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = true; a.time = r.time || 0; a.timeScale = r.loop ? 1 : 0;
+  const r = CLIPS[this.exercise].ready, a = this.act(r.clip + ':ready', r.clip); a.reset(); a.setLoop(r.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = true; a.time = r.time || 0; a.timeScale = r.loop ? 1 : 0;
   this.go(a, .35); this.holdGoal = this.exercise === 'swing' ? 1 : 0;
  }
  setExercise(ex) { if (CLIPS[ex] && ex !== this.exercise) { this.exercise = ex; this.ready() } }
  strike(ex, now) {
   if (ex !== this.exercise) this.setExercise(ex);
-  const c = CLIPS[this.exercise].strike, a = this.act(c.clip); a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.time = c.from; a.timeScale = (c.to - c.from) / TIMING[this.exercise].hit;
+  const c = CLIPS[this.exercise].strike, a = this.act(c.clip, c.clip); a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.time = c.from; a.timeScale = (c.to - c.from) / TIMING[this.exercise].hit;
   this.strikeAct = a; this.go(a, .12); this.hitAt = now; this.hitDone = false; this.strikeUntil = now + (c.end - c.from) / a.timeScale;
  }
  update(now, dt) {
@@ -107,24 +109,50 @@ class Gnome {
   if (this.strikeUntil && now >= this.strikeUntil) { this.strikeUntil = 0; this.ready() }
   this.off += (STAND_OFFSET[this.exercise] - this.off) * (1 - Math.exp(-dt * 4)); this.model.position.z = this.off * this.S;
   if (!this.hitDone && now - this.hitAt >= TIMING[this.exercise].hit) { this.hitDone = true; this.onHit && this.onHit(this) }
-  // the hammer is in the right hand for swings and lies on the floor for squats and push-ups; it glides between the two
+  // The hammer is held in both hands for swings and lies on the floor for squats and push-ups. The mocap has no prop, so its
+  // hands are not on any handle: in the ready stance the hammer stands in front of him and both arms are solved onto it
+  // (two-bone IK); during the blow the hammer follows the mocap right hand and the left hand is solved onto the same handle.
   this.hold += (this.holdGoal - this.hold) * (1 - Math.exp(-dt * 6));
-  const rh = this.b.RightHand, lh = this.b.LeftHand; if (!rh || !lh) return;
-  this.root.updateMatrixWorld(true);
-  // both hands grip the butt of the handle: the shaft continues along the forearms, the head beyond the hands
-  const rp = this.root.worldToLocal(rh.getWorldPosition(new THREE.Vector3())), lp = this.root.worldToLocal(lh.getWorldPosition(new THREE.Vector3()));
-  const rf = this.b.RightForeArm, lf = this.b.LeftForeArm, fa = f => this.root.worldToLocal(f.getWorldPosition(new THREE.Vector3()));
-  const axis = rp.clone().sub(fa(rf)).add(lp.clone().sub(fa(lf))); if (axis.lengthSq() < 1e-6) axis.set(0, 1, 0); axis.normalize();
-  axis.applyAxisAngle(new THREE.Vector3(0, 1, 0).cross(axis).normalize(), -HAMMER_TILT);
-  const Lw = HAMMER_LEN * this.S, grip = rp.clone().add(lp).multiplyScalar(.5), butt = grip.clone().addScaledVector(axis, -HAMMER_BUTT * Lw);
-  const side = new THREE.Vector3(0, 1, 0).cross(axis); if (side.lengthSq() < 1e-4) side.set(1, 0, 0); side.normalize();
+  const root = this.root, S = this.S, Lw = HAMMER_LEN * S, V = (x, y, z) => new THREE.Vector3(x, y, z), rl = n => root.worldToLocal(this.b[n].getWorldPosition(new THREE.Vector3()));
+  if (!this.b.RightHand || !this.b.LeftHand) return;
+  root.updateMatrixWorld(true);
+  const w = this.strikeAct ? Math.min(1, this.strikeAct.getEffectiveWeight()) : 0;
+  const mAxis = rl('RightHand').sub(rl('RightForeArm')); if (mAxis.lengthSq() < 1e-6) mAxis.set(0, 1, 0); mAxis.normalize();
+  const mButt = rl('RightHand').addScaledVector(mAxis, -.1 * Lw);
+  const axis = READY_AXIS.clone().lerp(mAxis, w).normalize(), butt = V(...READY_BUTT).multiplyScalar(S).lerp(mButt, w);
+  const hmq = this.model.getWorldQuaternion(new THREE.Quaternion());
+  if (this.hold > .02) {
+   const gR = butt.clone().addScaledVector(axis, .1 * Lw), gL = butt.clone().addScaledVector(axis, .3 * Lw), toW = p => root.localToWorld(p.clone());
+   const tgt = (n, g) => toW(rl(n).lerp(g, Math.min(1, this.hold * 1.2)));
+   this.armIK('Right', tgt('RightHand', gR), V(-1, -.8, -.3).applyQuaternion(hmq)); this.armIK('Left', tgt('LeftHand', gL), V(1, -.8, -.3).applyQuaternion(hmq));
+  }
+  const side = V(0, 1, 0).cross(axis); if (side.lengthSq() < 1e-4) side.set(1, 0, 0); side.normalize();
   const up = axis.clone().cross(side).normalize(); // flat face of the head looks along `side`
   const inHandQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis.clone().negate(), up, side));
   const inHandP = butt.clone().addScaledVector(axis, Lw / 2);
-  const floorP = new THREE.Vector3(...FLOOR_SPOT[this.exercise]).multiplyScalar(this.S), floorQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, .2, 0));
+  const floorP = V(...FLOOR_SPOT[this.exercise]).multiplyScalar(S), floorQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, .2, 0));
   this.hammer.position.lerpVectors(floorP, inHandP, this.hold); this.hammer.quaternion.slerpQuaternions(floorQ, inHandQ, this.hold);
  }
+ armIK(side, target, pole) { ik2(this.b[side + 'Arm'], this.b[side + 'ForeArm'], this.b[side + 'Hand'], target, pole) }
 }
+
+// two-bone IK in world space: bend `lower` toward `pole`, reach `target` with `end`
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
+function aim(bone, child, to) {
+ const bp = bone.getWorldPosition(_a), from = child.getWorldPosition(_b).sub(bp).normalize(), dirv = _c.copy(to).sub(bp).normalize();
+ const dq = new THREE.Quaternion().setFromUnitVectors(from, dirv), wq = bone.getWorldQuaternion(new THREE.Quaternion()).premultiply(dq), pq = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+ bone.quaternion.copy(pq.invert().multiply(wq)); bone.updateMatrixWorld(true);
+}
+function ik2(upper, lower, end, target, pole) {
+ if (!upper || !lower || !end) return;
+ const A = upper.getWorldPosition(new THREE.Vector3()), B = lower.getWorldPosition(new THREE.Vector3()), C = end.getWorldPosition(new THREE.Vector3());
+ const l1 = A.distanceTo(B), l2 = B.distanceTo(C), AT = target.clone().sub(A), dist = Math.min(Math.max(AT.length(), .05), (l1 + l2) * .995), d = AT.normalize();
+ const a = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist), h = Math.sqrt(Math.max(0, l1 * l1 - a * a)), pp = pole.clone().addScaledVector(d, -pole.dot(d)).normalize();
+ const B2 = A.clone().addScaledVector(d, a).addScaledVector(pp, h), T2 = A.clone().addScaledVector(d, dist);
+ aim(upper, lower, B2); aim(lower, end, T2);
+}
+
+
 
 export function create(canvas, opts = {}) {
  const mode = opts.mode || 'solo', group = mode === 'group';
