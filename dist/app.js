@@ -1,11 +1,11 @@
 'use strict';
 const $=id=>document.getElementById(id),canvas=$('world'),ctx=canvas.getContext('2d');
-let mode='idle',paused=false,count=0,broken=0,hp=20,elapsed=0,strokes=[],lastSwing=-Infinity,lastDemo=0,stream=null,wake=null,lastTime=performance.now(),gameTime=0,hitAt=-10,pendingHit=false,respawnAt=Infinity,particles=[],shake=0,soundOn=false,audioContext=null,requestGeneration=0,frameHandle=null,modelFailed=false,hintSince=0,lastStatus='no_person',rejectHint='',rejectAt=-Infinity,statusFrames={},lastStats=0,presentedBase=null,fileRun=0,lastVideoTime=-1,frameErrors=0,okSince=0,badSince=0,buttonReady=false;
+let mode='idle',paused=false,count=0,broken=0,hp=20,elapsed=0,strokes=[],lastSwing=-Infinity,lastDemo=0,stream=null,wake=null,lastTime=performance.now(),gameTime=0,hitAt=-10,pendingHit=false,respawnAt=Infinity,particles=[],shake=0,soundOn=false,audioContext=null,requestGeneration=0,frameHandle=null,modelFailed=false,hintSince=0,lastStatus='no_person',rejectHint='',rejectAt=-Infinity,statusFrames={},lastStats=0,presentedBase=null,fileRun=0,lastReject='-',lastDebug=0,debugOn=new URLSearchParams(location.search).has('debug'),sigHistory=[],lastVideoTime=-1,frameErrors=0,okSince=0,badSince=0,buttonReady=false;
 const modelDelegate=new URLSearchParams(location.search).get('delegate')==='gpu'?'GPU':'CPU';
 const tracker=new PoseTracker({delegate:modelDelegate});
 const calibration=new SwingCalibration(renderCalibration,startCameraGame,renderProgress);
 // Trial swings only advance the calibration; in the game each full cycle is one hit.
-const detector=new PoseSwingDetector({onSwing:t=>{if(mode==='camera'&&calibration.state==='active')swing(t)},onCalibration:n=>calibration.trial(n),onCalibrated:()=>calibration.accept(),onReject:reason=>{rejectHint=REJECT[reason]||'';rejectAt=performance.now();showHint(rejectHint)}});
+const detector=new PoseSwingDetector({onSwing:t=>{if(mode==='camera'&&calibration.state==='active')swing(t)},onCalibration:n=>calibration.trial(n),onCalibrated:()=>calibration.accept(),onReject:(reason,info)=>{lastReject=reason+' '+JSON.stringify(info,(k,v)=>typeof v==='number'?+v.toFixed(2):v);rejectHint=REJECT[reason]||'';rejectAt=performance.now();showHint(rejectHint)}});
 const HINTS={no_person:'Не вижу тебя. Встань перед телефоном так, чтобы были видны плечи, руки и таз.',body_weak:'Плохо видно плечи или таз. Добавь света и отойди чуть дальше.',out_of_frame:'Часть тела вне кадра. Отойди дальше: нужны плечи, таз и нижняя точка свинга.',too_far:'Ты слишком далеко. Подойди ближе к телефону.',hands_lost:'Не вижу запястья. Руки с гирей должны быть видны, не закрывай их корпусом.',hands_outside:'Нижняя точка вне кадра: запястья уходят за край. Отойди дальше или подними телефон.',camera_moved:'Кадр изменился: телефон или ты сдвинулись. Вернись на место или нажми «Настроить камеру заново».'};
 const REJECT={small:'Свинг слишком маленький: опускай гирю ниже и возвращай к груди.',fast:'Слишком быстро: делай ровные свинги вниз и обратно к груди.',slow:'Слишком медленно: сделай свинг без долгой паузы внизу.'};
 function say(s){$('status').textContent=s}
@@ -62,7 +62,7 @@ function processFrame(now,meta){
  if(meta.presentedFrames!==undefined&&presentedBase===null){presentedBase=meta.presentedFrames-1;tracker.resetStats()}
  const res=tracker.detect(v,now);frameErrors=0;
  const out=detector.update(res.landmarks,now,v.videoWidth/v.videoHeight);
- onStatus(out.status,now);drawOverlay(res.landmarks,out,v);showStats(now,meta);
+ if(debugOn)debugFrame(now,res.landmarks,out);onStatus(out.status,now);drawOverlay(res.landmarks,out,v);showStats(now,meta);
 }
 function frameError(e){console.warn('Pose inference failed',e);if(++frameErrors<5)return;modelFailed=true;stopFrames();clearOverlay();detector.reset();if(!['idle','active'].includes(calibration.state))calibration.set('modelError');else if(mode==='camera'){paused=true;sync();showHint('Модель позы остановилась. Нажми «Настроить камеру заново».')}}
 function onStatus(status,now){
@@ -71,6 +71,14 @@ function onStatus(status,now){
  else{okSince=0;badSince||=now;if(now-badSince>400)showHint(HINTS[status]);if(buttonReady&&now-badSince>1000)buttonReady=false}
  if(calibration.state==='positioning')$('checkSwing').disabled=!buttonReady;
 }
+// --- diagnostics: live signal, thresholds and raw confidences, shown with ?debug or the checkbox ---
+function debugFrame(now,lm,out){sigHistory.push({t:now,s:out.height,st:out.status});while(sigHistory.length&&now-sigHistory[0].t>8000)sigHistory.shift();if(now-lastDebug<100)return;lastDebug=now;const p=detector.params,w=i=>lm&&lm[i]?lm[i].visibility.toFixed(2)+'@y'+lm[i].y.toFixed(2):'-';
+ $('debugText').textContent=['статус: '+out.status+' · рук: '+out.hands+' · режим: '+detector.mode+' · фаза: '+(detector.phase||'-'),'высота (сглаж./сырая): '+(out.height==null?'—':out.height.toFixed(2))+' / '+(out.raw==null?'—':out.raw.toFixed(2)),'уверенность запястий L '+w(15)+' R '+w(16),'калибровка: '+calibration.done+'/'+calibration.needed+' · последний отказ: '+lastReject,p?'верх '+p.top.toFixed(2)+' низ '+p.bottom.toFixed(2)+' порог входа '+p.hi.toFixed(2)+' выхода '+p.lo.toFixed(2):'порог калибровки: амплитуда ≥ '+detector.o.minAmplitude+', цикл '+detector.o.minCycle+'–'+detector.o.maxCycle+' мс'].join('\n');
+ const c=$('debugChart').getContext('2d'),W=360,H=120,y=v=>H-(v+.8)/2.4*H;c.clearRect(0,0,W,H);c.strokeStyle='#ffffff30';c.beginPath();c.moveTo(0,y(0));c.lineTo(W,y(0));c.stroke();
+ if(p){for(const [v,col] of[[p.hi,'#71e5a3'],[p.lo,'#f67f82']]){c.strokeStyle=col;c.beginPath();c.moveTo(0,y(v));c.lineTo(W,y(v));c.stroke()}}
+ c.strokeStyle='#f7d36d';c.lineWidth=2;let pen=false;c.beginPath();for(const f of sigHistory){const x=W-(now-f.t)/8000*W;if(f.s==null){pen=false;continue}if(pen)c.lineTo(x,y(f.s));else c.moveTo(x,y(f.s));pen=true}c.stroke();c.lineWidth=1}
+function setDebug(on){debugOn=on;$('debugHud').hidden=!on;$('debugToggle').checked=on;sigHistory=[]}
+$('debugToggle').onchange=()=>setDebug($('debugToggle').checked);setDebug(debugOn);
 function showHint(text){for(const id of['gateHint','poseHint']){const e=$(id);if(e.textContent!==text)e.textContent=text;e.hidden=!text}}
 function failHintNow(){let total=0,worst=null,n=0;for(const k in statusFrames){total+=statusFrames[k];if(k!=='ok'&&statusFrames[k]>n){worst=k;n=statusFrames[k]}}return worst&&n/total>.25?HINTS[worst]:rejectHint}
 function renderProgress(done,needed){$('gateProgress').style.width=(done/needed*100)+'%';$('gateTitle').textContent='Свинг '+done+' / '+needed;$('gateMessage').textContent=done<needed?'Засчитан. Верни гирю к груди и сделай следующий.':'Все три свинга замечены.';showHint('')}

@@ -10,3 +10,6 @@
 #fileCanvas{display:block;width:100%;max-width:320px;margin-top:10px;border-radius:6px;background:#111}
 #fileResult{white-space:pre-wrap;font:10px/1.6 ui-monospace,Menlo,monospace;margin:10px 0 0;color:#c9c9d1}
 .calibration.compact .pose-hint{display:none}
+#debugHud{position:fixed;left:8px;bottom:8px;z-index:9999;background:#000c;border:1px solid #f7d36d88;border-radius:6px;padding:6px 8px;max-width:calc(100vw - 16px);pointer-events:none}
+#debugText{margin:0 0 4px;font:10px/1.45 ui-monospace,Menlo,monospace;color:#e8e8ee;white-space:pre-wrap}
+#debugChart{display:block;width:100%;max-width:360px;height:120px}.debug-toggle{display:block;font-size:11px;color:#c9c9d1;margin:0 0 12px}
