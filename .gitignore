@@ -6,3 +6,4 @@ node_modules/
 Thumbs.db
 coverage/
 *.log
+server/data/

@@ -1,0 +1,14 @@
+# Runs the game site and API for dwarfgym.live on 127.0.0.1:4310; a reverse proxy adds HTTPS.
+services:
+  dwarfgym:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    container_name: dwarfgym
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4310:4310"
+    volumes:
+      - ./data:/data
+    environment:
+      TRUST_PROXY: "1"
