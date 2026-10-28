@@ -6,9 +6,9 @@ const kinds = { squat: { make: v => squatSkeleton({ drop: -v }), up: 0, down: -.
  for (const [name, k] of Object.entries(kinds)) {
   const h = harness(), run = h.run, tab = { squat: 'exSquat', pushup: 'exPushup' }[name];
   assert.equal(run('exercise'), 'swing'); h.el(tab).onclick(); assert.equal(run('exercise'), name); assert.equal(run('detector.kind'), name);
-  assert(h.el('countLabel').textContent.includes(name === 'squat' ? 'ПРИСЕДАНИЙ' : 'ОТЖИМАНИЙ'), 'labels follow the exercise');
+  assert(h.el('countLabel').textContent.includes(name === 'squat' ? 'SQUATS' : 'PUSH-UPS'), 'labels follow the exercise');
   await run('openCamera()'); assert(h.el('gateMessage').textContent.length > 20); h.landmarks = k.make(k.up); h.advance(600);
-  assert(h.el('gateMessage').textContent.includes(name === 'squat' ? 'плечи и таз' : 'кисти'), 'instructions follow the exercise: ' + h.el('gateMessage').textContent);
+  assert(h.el('gateMessage').textContent.includes(name === 'squat' ? 'shoulders and hips' : 'hands'), 'instructions follow the exercise: ' + h.el('gateMessage').textContent);
   run("$('checkSwing').onclick()"); h.advance(3100); assert.equal(run('calibration.state'), 'checking');
   let t0 = h.time; for (let i = 0; i < 200 && run('calibration.state') === 'checking'; i++) { h.landmarks = k.make(cos(h.time - t0, k.period, k.up, k.down)); h.step() }
   assert.equal(run('calibration.state'), 'success', name + ' calibration'); assert.equal(run('count'), 0); h.landmarks = k.make(k.up); h.advance(1800); assert.equal(run('mode'), 'camera');
@@ -20,7 +20,7 @@ const kinds = { squat: { make: v => squatSkeleton({ drop: -v }), up: 0, down: -.
  // The screen follows the phone's exercise and keeps counting reps from it.
  const broker = makeBroker(), screen = harness({ Peer: broker.Peer }), phone = harness({ Peer: broker.Peer });
  await screen.run('startScreen()'); await phone.run(`joinRoom(${JSON.stringify(parseRoom(screen.el('pairCode').value))})`); for (let i = 0; i < 4; i++) await tick();
- phone.el('exSquat').onclick(); await tick(); phone.run('pushState()'); await tick(); assert.equal(screen.run('exercise'), 'squat', 'screen switches to the phone exercise'); assert(screen.el('countLabel').textContent.includes('ПРИСЕДАНИЙ'));
+ phone.el('exSquat').onclick(); await tick(); phone.run('pushState()'); await tick(); assert.equal(screen.run('exercise'), 'squat', 'screen switches to the phone exercise'); assert(screen.el('countLabel').textContent.includes('SQUATS'));
  // Gnomes: stable per id, varied across ids.
  assert.deepEqual(gnomeLook('p-abc'), gnomeLook('p-abc')); const looks = new Set(Array.from({ length: 200 }, (_, i) => JSON.stringify(gnomeLook('p-' + i)))); assert(looks.size > 190, 'looks are varied: ' + looks.size);
  for (const part of ['head', 'hat', 'torso', 'beard', 'legs']) assert(new Set(Array.from({ length: 300 }, (_, i) => gnomeLook('x' + i)[part])).size === 10, part + ' uses all 10 variants');

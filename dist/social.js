@@ -4,12 +4,12 @@
 const API_BASE = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v) } catch { return d } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch { } } };
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const EX_NAME = { squat: 'Приседания', swing: 'Свинги', pushup: 'Отжимания' }, EX_ICON = { swing: '⚒', squat: '⇩', pushup: '⇧' };
+const EX_NAME = { squat: 'Squats', swing: 'Swings', pushup: 'Push-ups' }, EX_ICON = { swing: '⚒', squat: '⇩', pushup: '⇧' };
 function onView(name) { if (name === 'board') loadBoard(); else if (name === 'me' || name === 'party') refreshMe() }
 let account = store.get('kamnelom.account', null), repState = store.get('kamnelom.reps', { seq: 0, pending: {}, inflight: null }), activeGroup = store.get('kamnelom.group', null);
 let accountBusy = null, flushTimer = null, flushing = false, backoff = 0, boardTab = 'total', online = null, myStats = null;
 
-function setOnline(v) { if (online === v) return; online = v; const e = $('netStatus'); if (e) e.textContent = v ? 'Сервер: на связи' : 'Сервер недоступен: повторы сохранятся на устройстве и отправятся позже' }
+function setOnline(v) { if (online === v) return; online = v; const e = $('netStatus'); if (e) e.textContent = v ? 'Server: online' : 'Server unreachable: reps are saved on this device and sent later' }
 async function api(path, { method = 'GET', body, auth = false, keepalive = false } = {}) {
  const headers = { 'Content-Type': 'application/json' }; if (auth && account) headers.Authorization = 'Bearer ' + account.id + '.' + account.secret;
  let r; try { r = await fetch(API_BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), keepalive }) } catch { setOnline(false); throw Object.assign(new Error('offline'), { offline: true }) }
@@ -28,14 +28,14 @@ function ensureAccount() {
 const loginLink = () => account ? location.origin + location.pathname + '#login=' + account.id + '.' + account.secret : '';
 async function loginFromLink(id, secret) {
  const p = await api('/api/login', { method: 'POST', body: { id, secret } });
- if (account && account.id !== id && !confirm('Войти как «' + p.nick + '»? Профиль на этом устройстве будет заменён.')) return;
+ if (account && account.id !== id && !confirm('Sign in as “' + p.nick + '”? The profile on this device will be replaced.')) return;
  account = { id: p.id, secret, nick: p.nick }; store.set('kamnelom.account', account); adoptProfileId(p.id); repState = { seq: 0, pending: {}, inflight: null }; store.set('kamnelom.reps', repState); myStats = p.stats; renderProfile(); loadBoard();
 }
 async function refreshMe() { if (!account) return; try { const p = await api('/api/me', { auth: true }); account.nick = p.nick; store.set('kamnelom.account', account); myStats = p.stats; renderProfile(); renderMyGroups(p.groups) } catch (e) { if (e.status === 401) { account = null; store.set('kamnelom.account', null); myStats = null; renderProfile() } } }
 function renderProfile() {
  const nick = $('nick'); if (nick && account && document.activeElement !== nick) nick.value = account.nick;
- const c = $('meGnome'); if (c) { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.save(); x.translate(c.width / 2, c.height - 6); x.scale(.62, .62); drawGnome(x, myLook, { tool: 'none' }); x.restore() }
- const s = $('meStats'); if (s) s.textContent = !account ? 'Профиль создаётся при первом подключении к серверу.' : myStats ? Object.entries(EX_NAME).map(([k, n]) => `${EX_ICON[k]} ${n}: ${myStats[k].reps} повторов, ${myStats[k].points} очков, валун №${myStats[k].rocks + 1} (${myStats[k].hp}/20)`).join('\n') : 'ID: ' + account.id;
+ const c = $('meGnome'); if (c && window.stageReady && stageReady() && window.Scene3D) { try { c.width = c.height = 160; const x = c.getContext('2d'); x.clearRect(0, 0, 160, 160); x.drawImage(Scene3D.portrait(profile.id, 160), 0, 0) } catch { } } else if (c) { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.save(); x.translate(c.width / 2, c.height - 6); x.scale(.62, .62); drawGnome(x, myLook, { tool: 'none' }); x.restore() }
+ const s = $('meStats'); if (s) s.textContent = !account ? 'Your profile is created on the first connection to the server.' : myStats ? Object.entries(EX_NAME).map(([k, n]) => `${EX_ICON[k]} ${n}: ${myStats[k].reps} reps, ${myStats[k].points} pts, boulder #${myStats[k].rocks + 1} (${myStats[k].hp}/20)`).join('\n') : 'ID: ' + account.id;
  const l = $('loginLink'); if (l) { l.value = loginLink(); const q = $('loginQr'); if (account && q && l.value) drawQrTo(q, l.value).catch(() => { }) }
 }
 
@@ -64,50 +64,52 @@ async function flush(opts = {}) {
 }
 
 // ---- leaderboard ----
-function miniGnome(id, w = 34, h = 44) { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.save(); x.translate(w / 2, h - 4); x.scale(.34, .34); drawGnome(x, gnomeLook(id), { tool: 'none' }); x.restore(); return c }
+function miniGnome(id, w = 34, h = 44) { if (window.stageReady && stageReady() && window.Scene3D) { try { const c = document.createElement('canvas'); c.width = 96; c.height = 96; c.getContext('2d').drawImage(Scene3D.portrait(id, 96), 0, 0); return c } catch { } } const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.save(); x.translate(w / 2, h - 4); x.scale(.34, .34); drawGnome(x, gnomeLook(id), { tool: 'none' }); x.restore(); return c }
 async function loadBoard(tab = boardTab) {
  boardTab = tab; for (const b of document.querySelectorAll?.('[data-board]') || []) b.setAttribute('aria-selected', String(b.dataset.board === tab));
  const list = $('boardList'), status = $('boardStatus'); if (!list) return;
  try {
-  const r = await api('/api/leaderboard?exercise=' + tab + '&limit=50'); status.textContent = r.rows.length ? '' : 'Пока никого. Сделай первый повтор!';
+  const r = await api('/api/leaderboard?exercise=' + tab + '&limit=50'); status.textContent = r.rows.length ? '' : 'Nobody yet. Do the first rep!';
   list.innerHTML = r.rows.map(x => {
-   const stage = r.exercise === 'total' ? Object.entries(EX_NAME).map(([k]) => `<span title="${EX_NAME[k]}: валун №${x.by[k].rocks + 1}">${EX_ICON[k]} ${x.by[k].reps}</span>`).join('') + `<span>валун №${x.rocks + 1}</span>` : `<span>${x.reps} повторов</span><span>валун №${x.rocks + 1}, ${x.hp}/20</span>`;
-   return `<li class="${account && account.id === x.id ? 'me' : ''}"><b class="rank">${x.rank}</b><span class="face" data-id="${esc(x.id)}"></span><span class="who">${esc(x.nick)}</span><span class="stage">${stage}</span><strong class="reps" title="очки">${x.points}</strong></li>`;
+   const stage = r.exercise === 'total' ? Object.entries(EX_NAME).map(([k]) => `<span title="${EX_NAME[k]}: boulder #${x.by[k].rocks + 1}">${EX_ICON[k]} ${x.by[k].reps}</span>`).join('') + `<span>boulder #${x.rocks + 1}</span>` : `<span>${x.reps} reps</span><span>boulder #${x.rocks + 1}, ${x.hp}/20</span>`;
+   return `<li class="${account && account.id === x.id ? 'me' : ''}"><b class="rank">${x.rank}</b><span class="face" data-id="${esc(x.id)}"></span><span class="who">${esc(x.nick)}</span><span class="prog">${stage}</span><strong class="reps" title="points">${x.points}</strong></li>`;
   }).join('');
   for (const f of list.querySelectorAll?.('.face') || []) f.appendChild(miniGnome(f.dataset.id));
- } catch { status.textContent = 'Таблица недоступна: нет связи с сервером.' }
+ } catch { status.textContent = 'Ranks unavailable: no connection to the server.' }
 }
 
 // ---- groups ----
 let group = null, groupStream = null, scene = { t0: 0, last: 0, hit: {}, counts: {}, raf: 0 };
 const groupLink = id => location.origin + location.pathname + '#group=' + id;
-function renderMyGroups(groups) { const e = $('myGroups'); if (!e) return; e.innerHTML = (groups || []).map(g => `<li><button data-group="${esc(g.id)}">${esc(g.name)} · цель ${g.goal}</button></li>`).join('') || '<li class="control-note">Ты пока ни в одной группе.</li>'; for (const b of e.querySelectorAll?.('[data-group]') || []) b.onclick = () => openGroup(b.dataset.group) }
+function renderMyGroups(groups) { const e = $('myGroups'); if (!e) return; e.innerHTML = (groups || []).map(g => `<li><button data-group="${esc(g.id)}">${esc(g.name)} · goal ${g.goal}</button></li>`).join('') || '<li class="control-note">You are not in a crew yet.</li>'; for (const b of e.querySelectorAll?.('[data-group]') || []) b.onclick = () => openGroup(b.dataset.group) }
 async function createGroup() {
- try { await ensureAccount(); const g = await api('/api/groups', { method: 'POST', auth: true, body: { name: $('groupName').value, goal: Number($('groupGoal').value) } }); showGroup(g); refreshMe() } catch (e) { $('groupStatus').textContent = e.offline ? 'Нет связи с сервером.' : e.message }
+ try { await ensureAccount(); const g = await api('/api/groups', { method: 'POST', auth: true, body: { name: $('groupName').value, goal: Number($('groupGoal').value) } }); showGroup(g); refreshMe() } catch (e) { $('groupStatus').textContent = e.offline ? 'No connection to the server.' : e.message }
 }
 async function openGroup(id) {
- $('groupStatus').textContent = 'Открываем группу…';
- try { const g = await api('/api/groups/' + encodeURIComponent(id)); showGroup(g); $('groupStatus').textContent = '' } catch (e) { $('groupStatus').textContent = e.status === 404 ? 'Группа не найдена: ссылка устарела.' : 'Нет связи с сервером.' }
+ $('groupStatus').textContent = 'Opening the crew…';
+ try { const g = await api('/api/groups/' + encodeURIComponent(id)); showGroup(g); $('groupStatus').textContent = '' } catch (e) { $('groupStatus').textContent = e.status === 404 ? 'Crew not found: the link is out of date.' : 'No connection to the server.' }
 }
 function showGroup(g) {
  goView('party'); closeStream(); group = g; $('groupPanel').hidden = false; $('groupTitle').textContent = g.name; $('groupInvite').value = groupLink(g.id); drawQrTo($('groupQr'), groupLink(g.id)).catch(() => { });
  scene.t0 = performance.now() / 1000; scene.hit = {}; scene.counts = {}; renderGroup(); updateActive();
  try { groupStream = new EventSource(API_BASE + '/api/groups/' + encodeURIComponent(g.id) + '/stream'); groupStream.onmessage = e => { try { group = JSON.parse(e.data); renderGroup() } catch { } } } catch { }
- cancelAnimationFrame(scene.raf); scene.raf = requestAnimationFrame(sceneTick); $('groupPanel').scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+ cancelAnimationFrame(scene.raf); if (!(window.stageGroupOpen && stageGroupOpen(g))) scene.raf = requestAnimationFrame(sceneTick);
 }
 function closeStream() { if (groupStream) { groupStream.close(); groupStream = null } }
-function closeGroup() { closeStream(); cancelAnimationFrame(scene.raf); group = null; $('groupPanel').hidden = true }
+function closeGroup() { closeStream(); cancelAnimationFrame(scene.raf); group = null; $('groupPanel').hidden = true; if (window.stageGroupClose) stageGroupClose() }
 function isMember() { return !!(group && account && group.members.some(m => m.id === account.id)) }
-function updateActive() { const b = $('groupActive'), j = $('groupJoin'); if (!group) return; j.hidden = isMember(); b.hidden = !isMember(); b.textContent = activeGroup === group.id ? '✓ Повторы идут в эту группу (выключить)' : 'Тренироваться для этой группы' }
+function updateActive() { const b = $('groupActive'), j = $('groupJoin'); if (!group) return; j.hidden = isMember(); b.hidden = !isMember(); b.textContent = activeGroup === group.id ? '✓ Reps go to this crew (turn off)' : 'Train for this crew' }
 function renderGroup() {
  if (!group) return; const pct = Math.min(100, Math.round(group.total / group.goal * 100)), max = Math.max(1, ...group.members.map(m => m.total));
- $('groupProgress').textContent = group.done ? `Башня готова! ${group.total} очков` : `${group.total} из ${group.goal} очков · ${pct}%`; $('groupBar').style.width = pct + '%';
- $('groupMembers').innerHTML = group.members.map(m => `<li><span class="who">${esc(m.nick)}</span><span class="bar"><i style="width:${Math.round(m.total / max * 100)}%"></i></span><span class="parts">${Object.keys(EX_NAME).filter(k => m.counts[k]).map(k => EX_ICON[k] + ' ' + m.counts[k]).join(' ')}</span><strong title="очки">${m.total}</strong></li>`).join('');
- for (const m of group.members) { const prev = scene.counts[m.id] ?? m.total; if (m.total > prev) scene.hit[m.id] = { at: performance.now() / 1000, ex: Object.keys(m.counts).reduce((a, k) => m.counts[k] > (m.counts[a] || 0) ? k : a, 'swing') }; scene.counts[m.id] = m.total }
+ $('groupProgress').textContent = group.done ? `Boulder smashed! ${group.total} pts` : `${group.total} of ${group.goal} pts · ${pct}%`; $('groupBar').style.width = pct + '%';
+ $('groupMembers').innerHTML = group.members.map(m => `<li><span class="who">${esc(m.nick)}</span><span class="bar"><i style="width:${Math.round(m.total / max * 100)}%"></i></span><span class="parts">${Object.keys(EX_NAME).filter(k => m.counts[k]).map(k => EX_ICON[k] + ' ' + m.counts[k]).join(' ')}</span><strong title="points">${m.total}</strong></li>`).join('');
+ const hits = [];
+ for (const m of group.members) { const prev = scene.counts[m.id] ?? m.total, ex = Object.keys(m.counts).reduce((a, k) => m.counts[k] > (m.counts[a] || 0) ? k : a, 'swing'); if (m.total > prev) { scene.hit[m.id] = { at: performance.now() / 1000, ex }; hits.push({ id: m.id, ex }) } scene.counts[m.id] = m.total }
+ if (window.stageGroupUpdate) stageGroupUpdate(group, hits);
  updateActive();
 }
-async function joinGroup() { try { await ensureAccount(); showGroup(await api('/api/groups/' + encodeURIComponent(group.id) + '/join', { method: 'POST', auth: true })); refreshMe() } catch (e) { $('groupStatus').textContent = e.offline ? 'Нет связи с сервером.' : e.message } }
-function toggleActive() { activeGroup = activeGroup === group.id ? null : group.id; store.set('kamnelom.group', activeGroup); updateActive(); if (activeGroup) say('Повторы идут в группу «' + group.name + '». Открой раздел «Игра», включи камеру и тренируйся.') }
+async function joinGroup() { try { await ensureAccount(); showGroup(await api('/api/groups/' + encodeURIComponent(group.id) + '/join', { method: 'POST', auth: true })); refreshMe() } catch (e) { $('groupStatus').textContent = e.offline ? 'No connection to the server.' : e.message } }
+function toggleActive() { activeGroup = activeGroup === group.id ? null : group.id; store.set('kamnelom.group', activeGroup); updateActive(); if (activeGroup) say('Reps now go to the crew “' + group.name + '”. Open Play, start the camera and train.') }
 
 // Group scene: the camera pulls back from the tower to show every gnome and their share of the work.
 function sceneTick() {
@@ -130,11 +132,11 @@ function sceneTick() {
 }
 
 // ---- wiring ----
-$('nickSave').onclick = async () => { try { await ensureAccount(); const p = await api('/api/me', { method: 'PATCH', auth: true, body: { nick: $('nick').value } }); account.nick = p.nick; store.set('kamnelom.account', account); $('nickStatus').textContent = 'Сохранено.'; loadBoard() } catch (e) { $('nickStatus').textContent = e.offline ? 'Нет связи с сервером.' : e.message } };
-$('loginCopy').onclick = async () => { try { await navigator.clipboard.writeText(loginLink()); $('nickStatus').textContent = 'Ссылка скопирована. Не показывай её другим.' } catch { $('loginLink').select?.() } };
+$('nickSave').onclick = async () => { try { await ensureAccount(); const p = await api('/api/me', { method: 'PATCH', auth: true, body: { nick: $('nick').value } }); account.nick = p.nick; store.set('kamnelom.account', account); $('nickStatus').textContent = 'Saved.'; loadBoard() } catch (e) { $('nickStatus').textContent = e.offline ? 'No connection to the server.' : e.message } };
+$('loginCopy').onclick = async () => { try { await navigator.clipboard.writeText(loginLink()); $('nickStatus').textContent = 'Link copied. Don\'t show it to anyone.' } catch { $('loginLink').select?.() } };
 for (const b of document.querySelectorAll?.('[data-board]') || []) b.onclick = () => loadBoard(b.dataset.board);
 $('groupCreate').onclick = createGroup; $('groupJoin').onclick = joinGroup; $('groupActive').onclick = toggleActive; $('groupClose').onclick = closeGroup;
-$('groupCopy').onclick = async () => { try { await navigator.clipboard.writeText($('groupInvite').value); $('groupStatus').textContent = 'Ссылка-приглашение скопирована.' } catch { $('groupInvite').select?.() } };
+$('groupCopy').onclick = async () => { try { await navigator.clipboard.writeText($('groupInvite').value); $('groupStatus').textContent = 'Invite link copied.' } catch { $('groupInvite').select?.() } };
 window.addEventListener('pagehide', () => { if (repState.pending && Object.values(repState.pending).some(n => n > 0) || repState.inflight) flush({ keepalive: true }) });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { loadBoard(); refreshMe() } });
 renderProfile();

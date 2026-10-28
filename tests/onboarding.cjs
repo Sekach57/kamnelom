@@ -17,7 +17,7 @@ const cycles = (h, n, o) => { const t0 = h.time; h.advance(1400 * n + 100, t => 
   h.landmarks = stand(); h.advance(1700); assert.equal(run('mode'), 'camera'); assert.equal(h.el('main').inert, false); assert.equal(run('count'), 0); assert.equal(run('detector.mode'), 'playing');
   cycles(h, 2); assert.equal(run('count'), 2, 'one full cycle = one hit');
   // Hands lost in the game: yellow hint, no hits; the unfinished cycle is dropped.
-  const before = run('count'); h.landmarks = skeleton({ s: TOP, wrists: 'none' }); h.advance(1500); assert.equal(h.el('poseHint').hidden, false); assert(h.el('poseHint').textContent.includes('запястья'));
+  const before = run('count'); h.landmarks = skeleton({ s: TOP, wrists: 'none' }); h.advance(1500); assert.equal(h.el('poseHint').hidden, false); assert(h.el('poseHint').textContent.includes('wrists'));
   h.landmarks = stand(); h.advance(600); assert.equal(h.el('poseHint').hidden, true); assert.equal(run('count'), before);
   // Pause: frames are not processed and the cycle is dropped.
   run("$('pause').onclick()"); const p = run('tracker.stats.processed'); h.advance(2000, swingAt(h.time)); assert.equal(run('tracker.stats.processed'), p, 'no inference while paused'); assert.equal(run('count'), before);
@@ -31,7 +31,7 @@ const cycles = (h, n, o) => { const t0 = h.time; h.advance(1400 * n + 100, t => 
  {
   const h = harness(), run = h.run; await run('openCamera()'); h.landmarks = stand(); h.advance(600); run("$('checkSwing').onclick()"); h.advance(3100);
   h.landmarks = skeleton({ s: TOP, wrists: 'none' }); h.advance(41000);
-  assert.equal(run('calibration.state'), 'failed'); assert.equal(run('mode'), 'idle'); assert.equal(h.el('checkSwing').hidden, false); assert(h.el('gateMessage').textContent.includes('запястья'), 'specific hint: ' + h.el('gateMessage').textContent);
+  assert.equal(run('calibration.state'), 'failed'); assert.equal(run('mode'), 'idle'); assert.equal(h.el('checkSwing').hidden, false); assert(h.el('gateMessage').textContent.includes('wrists'), 'specific hint: ' + h.el('gateMessage').textContent);
   assert.equal(run('count'), 0); h.landmarks = stand(); h.advance(300); run("$('checkSwing').onclick()"); assert.equal(run('calibration.done'), 0, 'retry starts from 0/3');
   run("$('closeCalibration').onclick()"); assert.equal(run('stream'), null); assert(h.stopped > 0); assert.equal(h.el('calibrationPanel').hidden, true);
  }
