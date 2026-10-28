@@ -19,3 +19,4 @@
 .pair-status{font-size:13px;line-height:1.6;color:#e8e8ee}.pair canvas{display:block;width:min(320px,100%);image-rendering:pixelated;background:#fff;border-radius:6px;margin:10px 0}
 .pair textarea{display:block;width:100%;box-sizing:border-box;margin:8px 0;background:#111;color:#e8e8ee;border:1px solid #ffffff28;border-radius:6px;font:11px/1.4 ui-monospace,monospace;padding:8px}
 #scanVideo{width:min(320px,100%);border-radius:6px;margin-top:8px}.pair button{margin:4px 8px 0 0}
+.exercise-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.exercise-tabs button{padding:10px 12px;font-size:12px}.exercise-tabs button[aria-selected="true"]{background:#f7b36d;color:#1b1c22;border-color:#f7b36d}

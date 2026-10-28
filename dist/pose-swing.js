@@ -12,16 +12,23 @@ const POSE_DEFAULTS = {
  enter: .65, exit: .35, // hysteresis, as a fraction of the calibrated amplitude above the bottom
  moveScale: .35, moveShift: .25, moveHold: 600 // camera-moved limits: relative torso size change, hip shift in frame heights, ms
 };
+// Per-exercise overrides. Swing: wrists above the hip line (torso lengths). Squat: shoulder/hip height
+// (torso lengths), front camera. Push-up: shoulder height above the wrists (shoulder widths), camera low in front.
+const POSE_EXERCISES = {
+ swing: {},
+ squat: { zigzag: .12, minAmplitude: .25, minCycle: 700, maxCycle: 9000, enter: .7, exit: .3, moveShift: .3, moveY: false },
+ pushup: { zigzag: .15, minAmplitude: .35, minCycle: 600, maxCycle: 8000, enter: .7, exit: .3, moveShift: .3, moveY: false, minTorso: .04 }
+};
 const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 };
 
 class PoseSwingDetector {
  constructor(handlers = {}, options = {}) {
-  this.h = handlers; this.o = { ...POSE_DEFAULTS, ...options };
+  this.h = handlers; this.kind = options.exercise || 'swing'; if (!POSE_EXERCISES[this.kind]) throw new Error('unknown exercise'); this.o = { ...POSE_DEFAULTS, ...POSE_EXERCISES[this.kind], ...options };
   this.mode = 'idle'; this.params = null; this.baseHip = null; this.baseScale = null; this.cycles = []; this.reset();
  }
  // Forget the current signal and any unfinished cycle; calibration stays.
  reset() {
-  this.s = null; this.t = null; this.lastValid = null; this.d = 0; this.scale = null; this.fast = null; this.hip = null; this.slowHip = null;
+  this.s = null; this.t = null; this.lastValid = null; this.d = 0; this.scale = null; this.fast = null; this.mt = null; this.hip = null; this.slowHip = null;
   this.phase = null; this.leftTop = null; this.moved = false; this.movedSince = null; this.status = 'no_person';
   this.zz = { dir: 0, init: false, hi: 0, lo: 0, hiT: 0, loT: 0, ext: 0, extT: 0 }; this.extremes = [];
  }
@@ -43,7 +50,8 @@ class PoseSwingDetector {
   if (this.mode === 'calibrating') this.calibrate(this.s, t); else if (this.mode === 'playing' && !this.moved) this.play(this.s, t);
   return r;
  }
- measure(lm, t, aspect) {
+ measure(lm, t, aspect) { return this.kind === 'swing' ? this.measureSwing(lm, t, aspect) : this.measureBody(lm, t, aspect) }
+ measureSwing(lm, t, aspect) {
   const o = this.o, out = { status: 'ok', height: null, raw: null, hands: 0, points: null };
   if (!lm || lm.length < 25) { out.status = 'no_person'; return out }
   const P = k => lm[POSE_POINTS[k]], c = {}; for (const k in POSE_POINTS) c[k] = this.point(P(k)); out.points = c;
@@ -53,7 +61,7 @@ class PoseSwingDetector {
   const sx = (P('lShoulder').x + P('rShoulder').x) / 2, sy = (P('lShoulder').y + P('rShoulder').y) / 2, hx = (P('lHip').x + P('rHip').x) / 2, hy = (P('lHip').y + P('rHip').y) / 2;
   const torso = Math.hypot((sx - hx) * aspect, sy - hy);
   if (torso < o.minTorso) { out.status = 'too_far'; return out }
-  const dt = this.t === null ? 0 : Math.min(t - this.t, 200), k = this.scale === null ? 1 : 1 - Math.exp(-dt / o.scaleTau);
+  const dt = this.mt == null ? 0 : Math.min(t - this.mt, 200), k = this.scale === null ? 1 : 1 - Math.exp(-dt / o.scaleTau);
   const ok = ['lWrist', 'rWrist'].filter(n => c[n] === 'ok');
   if (!ok.length) { out.status = ['lWrist', 'rWrist'].some(n => c[n] === 'outside') ? 'hands_outside' : 'hands_lost'; return out }
   // The torso size and hip reference only advance on frames where the hands are also usable.
@@ -64,7 +72,36 @@ class PoseSwingDetector {
   if (ok.length === 2) { const l = height('lWrist'), r = height('rWrist'); this.d += ((r - l) / 2 - this.d) * .2; out.raw = (l + r) / 2 }
   else out.raw = ok[0] === 'lWrist' ? height('lWrist') + this.d : height('rWrist') - this.d; // one hand hidden: keep the known left/right offset, never average with a lost point
   this.fast = this.fast == null ? torso : this.fast + (torso - this.fast) * (dt ? 1 - Math.exp(-dt / 300) : 1);
-  out.hands = ok.length; this.checkMoved(t); if (this.moved) out.status = 'camera_moved';
+  out.hands = ok.length; this.mt = t; this.checkMoved(t); if (this.moved) out.status = 'camera_moved';
+  return out;
+ }
+ // Squats and push-ups: the whole body moves, so the signal is body height rather than hand height.
+ measureBody(lm, t, aspect) {
+  const o = this.o, out = { status: 'ok', height: null, raw: null, hands: 0, points: null }, pushup = this.kind === 'pushup';
+  if (!lm || lm.length < 25) { out.status = 'no_person'; return out }
+  const P = k => lm[POSE_POINTS[k]], c = {}; for (const k in POSE_POINTS) c[k] = this.point(P(k)); out.points = c;
+  const need = pushup ? ['lShoulder', 'rShoulder'] : ['lShoulder', 'rShoulder', 'lHip', 'rHip'];
+  if (need.some(k => c[k] === 'outside')) { out.status = 'out_of_frame'; return out }
+  if (need.some(k => c[k] !== 'ok')) { out.status = 'body_weak'; return out }
+  const L = P('lShoulder'), R = P('rShoulder'), sx = (L.x + R.x) / 2, sy = (L.y + R.y) / 2, dt = this.mt == null ? 0 : Math.min(t - this.mt, 200), k = this.scale === null ? 1 : 1 - Math.exp(-dt / o.scaleTau);
+  let size, ref, raw;
+  if (pushup) {
+   size = Math.abs(L.x - R.x) * aspect; if (size < o.minTorso) { out.status = 'too_far'; return out }
+   const arms = [['lShoulder', 'lWrist'], ['rShoulder', 'rWrist']].filter(([, w]) => c[w] === 'ok');
+   if (!arms.length) { out.status = ['lWrist', 'rWrist'].some(n => c[n] === 'outside') ? 'hands_outside' : 'hands_lost'; return out }
+   this.scale = this.scale === null ? size : this.scale + (size - this.scale) * k;
+   const h = ([a, w]) => (P(w).y - P(a).y) / this.scale;
+   if (arms.length === 2) { const l = h(arms[0]), r = h(arms[1]); this.d += ((r - l) / 2 - this.d) * .2; raw = (l + r) / 2 } else raw = arms[0][0] === 'lShoulder' ? h(arms[0]) + this.d : h(arms[0]) - this.d;
+   out.hands = arms.length; ref = { x: sx * aspect, y: sy };
+  } else {
+   const hx = (P('lHip').x + P('rHip').x) / 2, hy = (P('lHip').y + P('rHip').y) / 2; size = Math.hypot((sx - hx) * aspect, sy - hy);
+   if (size < o.minTorso) { out.status = 'too_far'; return out }
+   this.scale = this.scale === null ? size : this.scale + (size - this.scale) * k;
+   raw = -((sy + hy) / 2) / this.scale; ref = { x: hx * aspect, y: hy };
+  }
+  const hk = this.hip === null ? 1 : 1 - Math.exp(-dt / 400); this.hip = this.hip === null ? ref : { x: this.hip.x + (ref.x - this.hip.x) * hk, y: this.hip.y + (ref.y - this.hip.y) * hk };
+  this.fast = this.fast == null ? size : this.fast + (size - this.fast) * (dt ? 1 - Math.exp(-dt / 300) : 1);
+  out.raw = raw; this.mt = t; this.checkMoved(t); if (this.moved) out.status = 'camera_moved';
   return out;
  }
  // Frames without a usable body/hands are never interpreted as a swing.
@@ -72,7 +109,7 @@ class PoseSwingDetector {
  clearCycle() { this.phase = null; this.leftTop = null; this.zz = { dir: 0, init: false, hi: 0, lo: 0, hiT: 0, loT: 0, ext: 0, extT: 0 }; this.extremes = [] }
  checkMoved(t) {
   const o = this.o; if (this.baseScale === null || !this.baseHip) { this.moved = false; return }
-  const off = Math.abs(this.fast / this.baseScale - 1) > o.moveScale || Math.hypot(this.hip.x - this.baseHip.x, this.hip.y - this.baseHip.y) > o.moveShift;
+  const off = Math.abs(this.fast / this.baseScale - 1) > o.moveScale || Math.hypot(this.hip.x - this.baseHip.x, o.moveY === false ? 0 : this.hip.y - this.baseHip.y) > o.moveShift;
   if (!off) { this.moved = false; this.movedSince = null; return }
   this.movedSince ??= t; if (t - this.movedSince >= o.moveHold && !this.moved) { this.moved = true; this.clearCycle() }
  }
@@ -127,4 +164,4 @@ class PoseSwingDetector {
   } else if (s <= p.lo && this.phase === 'top') { this.phase = 'bottom'; this.leftTop = t }
  }
 }
-if (typeof module !== 'undefined') module.exports = { PoseSwingDetector, POSE_POINTS, POSE_DEFAULTS };
+if (typeof module !== 'undefined') module.exports = { PoseSwingDetector, POSE_POINTS, POSE_DEFAULTS, POSE_EXERCISES };

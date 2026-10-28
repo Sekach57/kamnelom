@@ -1,7 +1,7 @@
 'use strict';
 // Runs dist/app.js in a vm with a fake DOM, a fake camera and a fake pose tracker whose landmarks the test controls.
 const fs = require('fs'), vm = require('vm'), path = require('path');
-const { PoseSwingDetector, POSE_POINTS } = require('../dist/pose-swing.js'), { SwingCalibration } = require('../dist/calibration.js'), { RemoteLink, PeerLink, parseRoom } = require('../dist/remote.js');
+const { PoseSwingDetector, POSE_POINTS } = require('../dist/pose-swing.js'), { SwingCalibration } = require('../dist/calibration.js'), { RemoteLink, PeerLink, parseRoom } = require('../dist/remote.js'), { gnomeLook, drawGnome } = require('../dist/gnome.js');
 const noop = () => { };
 module.exports = function harness({ loadModel, rtc, Peer } = {}) {
  const h = { listeners: {}, time: 0, stopped: 0, requests: [], els: {}, landmarks: null, loads: 0, frame: 0 };
@@ -16,7 +16,7 @@ module.exports = function harness({ loadModel, rtc, Peer } = {}) {
   detect() { this.stats.processed++; if (h.detectError) { this.stats.errors++; throw new Error('inference') } return { landmarks: h.landmarks, ms: 1 } }
   close() { this.landmarker = null }
  }
- const sandbox = { PoseSwingDetector, POSE_POINTS, SwingCalibration, PoseTracker: FakeTracker, URLSearchParams, location: { search: '', hash: '', pathname: '/', origin: 'http://test' }, history: { replaceState: noop }, setTimeout, clearTimeout, setInterval: () => 0, qrcode: require('../dist/vendor/qr/qrcode.js'),
+ const sandbox = { PoseSwingDetector, POSE_POINTS, gnomeLook, drawGnome, localStorage: { getItem: () => null, setItem: noop }, crypto: require('crypto').webcrypto, SwingCalibration, PoseTracker: FakeTracker, URLSearchParams, location: { search: '', hash: '', pathname: '/', origin: 'http://test' }, history: { replaceState: noop }, setTimeout, clearTimeout, setInterval: () => 0, qrcode: require('../dist/vendor/qr/qrcode.js'),
   Peer, PeerLink: class extends PeerLink { constructor(h, o) { super(h, { Peer, retryMs: 5, timeoutMs: 400, ...o }) } },
   parseRoom, RemoteLink: class extends RemoteLink { constructor(h, o) { super(h, { rtc, gatherMs: 0, ...o }) } },
   document: { hidden: false, head: { appendChild: noop }, getElementById: el, createElement: () => el('sample'), querySelector: () => el('main'), addEventListener: (t, f) => { h.listeners[t] = f }, body: { classList: { add: noop, remove: noop, toggle: noop } } },
