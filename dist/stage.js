@@ -3,13 +3,13 @@
 // If WebGL or the models fail to load, the old 2D canvases stay visible (body.no3d); the pose pipeline is untouched.
 (function () {
  const $ = id => document.getElementById(id);
- let M = null, solo = null, grp = null, groupObj = null, last = performance.now(), soloId = null;
+ let wantEx = null, M = null, solo = null, grp = null, groupObj = null, last = performance.now(), soloId = null;
  const gid = () => (typeof stageGnomeId === 'function' ? stageGnomeId() : 'me');
 
  function fallback(why) { console.warn('3D scene unavailable, using 2D:', why); document.body.classList.add('no3d'); $('world').hidden = false; $('groupWorld').hidden = false }
  function ensureSolo() {
   if (solo || !M) return solo;
-  try { solo = M.create($('world3d'), { mode: 'solo' }); solo.setGnomes([soloId = gid()]); window.stage3d = true; if (typeof updateRock === 'function') updateRock() } catch (e) { fallback(e); M = null }
+  try { solo = M.create($('world3d'), { mode: 'solo' }); { const wide = innerWidth > 820; solo.setShift(wide ? .2 : 0, wide ? 0 : -.2) } solo.setGnomes([soloId = gid()]); if (wantEx) solo.setExercise(soloId, wantEx); window.stage3d = true; if (typeof updateRock === 'function') updateRock() } catch (e) { fallback(e); M = null }
   return solo;
  }
  function tags() {
@@ -20,9 +20,10 @@
  }
  function frame(t) {
   const dt = Math.min((t - last) / 1000, .1); last = t;
+  try { const scr = (mode === 'idle' && !stream && calibration.state === 'idle') ? 'menu' : 'game'; if (document.body.dataset.scr !== scr) { document.body.dataset.scr = scr; if (solo) { const wide = innerWidth > 820; solo.setShift(scr === 'menu' ? (wide ? .2 : 0) : 0, scr === 'menu' ? (wide ? 0 : -.2) : 0) } } } catch { }
   if (!document.hidden) {
    const view = typeof currentView === 'string' ? currentView : 'play';
-   if (solo && view === 'play') { const id = gid(); if (id !== soloId) solo.setGnomes([soloId = id]); solo.resize(); solo.render(dt) }
+   if (solo && view === 'play') { const id = gid(); if (id !== soloId) { solo.setGnomes([soloId = id]); if (wantEx) solo.setExercise(soloId, wantEx) } solo.resize(); solo.render(dt) }
    if (grp && view === 'party' && groupObj) { grp.resize(); grp.render(dt); tags() }
   }
   requestAnimationFrame(frame);
@@ -31,6 +32,7 @@
 
  // ---- hooks called from app.js ----
  window.stageStrike = (ex, dmg) => { if (solo) solo.hit(soloId, ex, dmg) };
+ window.stageExercise = ex => { wantEx = ex; if (solo) solo.setExercise(soloId, ex) };
  window.stageRock = frac => { if (!solo) return; if (frac <= 0) solo.breakRock(); else solo.setHp(frac) };
 
  // ---- hooks called from social.js ----

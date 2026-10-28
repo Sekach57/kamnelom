@@ -1,0 +1,2 @@
+Pixelify Sans (c) The Pixelify Sans Project Authors, and Silkscreen (c) The Silkscreen Project Authors.
+Both are licensed under the SIL Open Font License 1.1 (https://openfontlicense.org). Latin subsets, served from Google Fonts.

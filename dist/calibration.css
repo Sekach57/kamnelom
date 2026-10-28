@@ -73,3 +73,7 @@ body.calibrating{overflow:hidden}
 .pair-steps li.done{color:#71e5a3}
 .pair-steps li.done::before{content:"✓";border-color:#71e5a3;color:#71e5a3}
 body[data-mode="screen"] .setup .control .file-check{display:none}
+
+.calibration,.calibration *{border-radius:0!important}
+.calibration .gate-shell{font-family:var(--body)}
+.calibration h2,.calibration .gate-header{font-family:var(--head)}
