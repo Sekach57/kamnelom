@@ -194,7 +194,7 @@ export function create(canvas, opts = {}) {
  const crystalMat = new THREE.MeshStandardMaterial({ color: '#ff9a52', emissive: '#ff5a14', emissiveIntensity: 1, flatShading: true, roughness: .4 });
  for (let i = 0; i < 9; i++) { const a = hash('cx' + i), h = .25 + hash('ch' + i) * .45, c = new THREE.Mesh(new THREE.ConeGeometry(.09 + h * .12, h, 4), crystalMat); const e = i % 4, t = (a - .5) * slabW * .86, o = slabW / 2 - .22; c.position.set(e === 0 ? t : e === 1 ? o : e === 2 ? -t : -o, h / 2, e === 0 ? -o : e === 1 ? t : e === 2 ? o : -t); c.rotation.set((hash('r' + i) - .5) * .5, 0, (hash('s' + i) - .5) * .5); slab.add(c) }
  const flames = [];
- for (const [x, z] of group ? [[-4.1, 0], [4.1, 0]] : [[-1.6, -1.9], [2.6, -1.9]]) {
+ for (const [x, z] of opts.flames || (group ? [[-4.1, 0], [4.1, 0]] : [[-1.6, -1.9], [2.6, -1.9]])) { // opts.flames: torch post positions
   const post = new THREE.Mesh(new THREE.CylinderGeometry(.05, .07, 1.5, 6), new THREE.MeshStandardMaterial({ color: '#4a3526', roughness: 1 })); post.position.set(x, .75, z); scene.add(post);
   const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: radial('rgba(255,170,70,.95)', 'rgba(255,70,0,0)'), blending: THREE.AdditiveBlending, depthWrite: false })); fl.scale.set(.5, .75, 1); fl.position.set(x, 1.7, z); scene.add(fl);
   const pl = new THREE.PointLight('#ff9448', 3, 9, 1.5); pl.position.set(x, 1.8, z); scene.add(pl); flames.push({ fl, pl });
@@ -284,7 +284,7 @@ export function create(canvas, opts = {}) {
  function render(dt) {
   dt = Math.min(dt, .1); now += dt;
   if (Math.abs(shift.x - shiftNow.x) + Math.abs(shift.y - shiftNow.y) > .001) { const k = 1 - Math.exp(-dt * 6); shiftNow.x += (shift.x - shiftNow.x) * k; shiftNow.y += (shift.y - shiftNow.y) * k; applyShift() }
-  const V = opts.view, tx = V ? V.x : group ? 0 : .5, ty = V ? V.y : group ? .2 : .9; if (camera.zoom !== (V ? V.zoom : 1)) { camera.zoom = V ? V.zoom : 1; camera.updateProjectionMatrix() } camera.position.set(tx + Math.sin(AZ) * Math.cos(ELEV) * 30, ty + Math.sin(ELEV) * 30, Math.cos(AZ) * Math.cos(ELEV) * 30); camera.lookAt(tx, ty, 0)
+  const V = opts.view, tx = V ? V.x : group ? 0 : .5, ty = V ? V.y : group ? .2 : .9; if (camera.zoom !== (V ? V.zoom : 1)) { camera.zoom = V ? V.zoom : 1; camera.updateProjectionMatrix() } const az = opts.az ?? AZ, el = opts.elev ?? ELEV; camera.position.set(tx + Math.sin(az) * Math.cos(el) * 30, ty + Math.sin(el) * 30, Math.cos(az) * Math.cos(el) * 30); camera.lookAt(tx, ty, 0)
   for (const g of gnomes.values()) g.update(now, dt);
   // boulder: shrinks and glows as it takes damage
   const dmg = 1 - hp, target = broken ? 0 : .62 + hp * .38; respawn = broken ? 0 : respawn + dt;

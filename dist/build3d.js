@@ -1,38 +1,42 @@
 'use strict';
-// Build screen (#/build): the dwarf digs ore out of the boulder, hauls blocks on push-ups and builds a free wall on squats.
-// It uses the quarry's own isometric pixel pipeline (scene3d.js: orthographic camera, small render target, palette, dither, outline)
-// and the same dwarf with his hand-keyed clips. Game state lives in build.js (BuildWorld); this file is only view and controls.
+// Build screen (#/build): the dwarf digs ore out of the boulder, hauls blocks on push-ups and builds on a plot of floor on squats.
+// The plot is a real 3D grid (width x depth x height): you can walk the camera all the way round it, draw ghosts on the floor or on
+// any face of a block, and watch it grow. It runs on the quarry's own engine and dwarf (scene3d.js) with a calmer picture
+// (finer pixels, many colours, almost no dither) so blocks stay readable. Game state lives in build.js (BuildWorld); this file is view and controls.
 // Repetitions come from buttons for now: the camera and the pose detectors are not connected to this screen yet.
 (() => {
  const $ = id => document.getElementById(id), canvas = $('buildWorld3d');
  if (!canvas || typeof BuildWorld === 'undefined') return;
  const EX = Object.fromEntries(Object.entries(BUILD_JOBS).map(([k, v]) => [k, v.exercise])); // job -> exercise
  const MATS = Object.keys(BUILD_MATERIALS), G = BUILD_GRID;
- const C = .4, S = 1.6; // wall cell size and dwarf scale, world units
+ const C = .42, S = 1.6; // plot cell size and dwarf scale, world units
  const MIN_GAP = .8; // seconds between counted reps, as in the quarry
- // ---- layout, world units (x right, z towards the viewer). Front view: the wall runs along x and faces the camera, the dwarf works in profile.
+ // ---- layout, world units (x right, z towards the viewer at azimuth 0). The plot is in the middle; the boulder and the piles sit around it.
+ const PLOT = [-1.2, 0]; // centre of the plot on the floor (the camera orbits the point x = view.x, z = 0)
+ const O = [PLOT[0] - G.w * C / 2, PLOT[1] - G.d * C / 2]; // its back left corner
  const P = {
-  site: [-2.4, -1.3], // bottom left front corner of the wall; it runs to the right
-  dig: [1.2, -.3], boulderDist: 2.4, // he stands here and faces the boulder on his right
-  mountain: [3.0, 1.3], sitePile: [-3.5, 1.7], // piles of finished blocks
-  haul: [1.4, 1.5], // where he does push-ups, facing the site pile
-  place: [-3.4, .1] // where he squats, left of the wall so he never hides it
+  dig: [2.2, -.6], boulderDist: 2.4, // he stands here and faces the boulder on his right
+  mountain: [3.4, 1.9], sitePile: [-4.6, 3.0], // piles of finished blocks
+  haul: [2.4, 3.0], // where he does push-ups, facing the site pile
+  place: [-4.5, -.2] // where he squats, left of the plot
  };
  const DIG_YAW = Math.PI / 2, rock = [P.dig[0] + P.boulderDist * Math.sin(DIG_YAW), P.dig[1] + P.boulderDist * Math.cos(DIG_YAW)];
- const wallDir = [1, 0], wallOut = [0, 1]; // along the wall, and out of its front face
- const cellWorld = (x, y, z = 0) => [P.site[0] + wallDir[0] * x + wallOut[0] * z, y, P.site[1] + wallDir[1] * x + wallOut[1] * z];
+ const cellOrigin = (x, y, z) => [O[0] + x * C, y * C, O[1] + z * C]; // corner of a cell
+ const cellCenter = (x, y, z, h = 1) => [O[0] + (x + .5) * C, (y + h / 2) * C, O[1] + (z + .5) * C];
  const yawTo = (from, to) => Math.atan2(to[0] - from[0], to[1] - from[1]);
  const spot = w => [(w[0] - P.dig[0]) / S, (w[1] - P.dig[1]) / S]; // gnome spots are in his own units, relative to his root
  const SPOTS = { swing: [0, 0], pushup: spot(P.haul), squat: spot(P.place) };
  const YAW = { swing: DIG_YAW, pushup: yawTo(P.haul, P.sitePile), squat: Math.PI / 2 };
  const HANDS = 1.15; // how far in front of the lying dwarf the block he pushes rests
+ const DIRS = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] }, FACE_NAME = { n: 'NORTH', e: 'EAST', s: 'SOUTH', w: 'WEST' };
 
- const state = { world: new BuildWorld(), job: 'dig', material: 'stone', shape: 'block', facing: 'r', tool: 'draw', auto: false, nextAuto: 0, lastRep: -9, hover: null, toastUntil: 0 };
+ const state = { world: new BuildWorld(), job: 'dig', material: 'stone', shape: 'block', facing: 's', tool: 'draw', auto: false, nextAuto: 0, lastRep: -9, hover: null, toastUntil: 0,
+  az: -.5, azT: -.5, el: .62, zoom: 1 };
  const pending = { swing: [], pushup: [], squat: [] }; // outcomes of counted reps, shown when the blow lands
  const fliers = []; // blocks in the air: { obj, from, to, t0, dur, land }
  const landing = new Set(); // keys of built cells that are still in the air
  const vis = { mountain: {}, site: {} }; // piles as drawn: they change when a block lands, the world already counted it
- let api = null, T = null, site = null, cellMeshes = new Map(), pileMeshes = {}, carry = null, preview = null, soloId = 'me', last = 0, running = false, failed = false, gid = null;
+ let api = null, T = null, site = null, floor = null, cellMeshes = new Map(), pileMeshes = {}, carry = null, preview = null, soloId = 'me', last = 0, running = false, failed = false, gid = null;
  const now = () => performance.now() / 1000;
  const toast = text => { const e = $('bToast'); e.textContent = text; state.toastUntil = now() + 3.2 };
 
@@ -60,26 +64,33 @@
  const edgeMat = () => edgeMat.m ||= new T.LineBasicMaterial({ color: '#ffe9b0', transparent: true, opacity: .8, depthWrite: false });
  const geo = (w, hh, d) => geoCache[w + '|' + hh + '|' + d] ||= new T.BoxGeometry(w, hh, d);
 
- // A piece in cell coordinates: the cell's bottom left front corner is the origin (size c).
+ // A piece in cell coordinates: the cell's back left bottom corner is the origin (size c). facing: the way stairs rise / a door faces.
  function piece(shape, m, facing, isGhost, c = C) {
-  const g = new T.Group(), mat = isGhost ? ghostMat(m) : solidMat(m);
+  const g = new T.Group(), mat = isGhost ? ghostMat(m) : solidMat(m), [fx, fz] = DIRS[facing] || DIRS.s;
   const box = (w, hh, d, x, y, z, mt = mat) => { const o = new T.Mesh(geo(w, hh, d), mt); o.position.set(x, y, z); g.add(o); if (isGhost) { const e = new T.LineSegments(new T.EdgesGeometry(geo(w, hh, d)), edgeMat()); e.position.copy(o.position); g.add(e) } return o };
   if (shape === 'block') box(c, c, c, c / 2, c / 2, c / 2);
-  else if (shape === 'stairs') { box(c, c / 2, c, c / 2, c / 4, c / 2); box(c / 2, c / 2, c, facing === 'l' ? c / 4 : c * .75, c * .75, c / 2) }
-  else { // door: a slab with a darker raised panel and a brass handle on the front and the left face
-   box(c * .96, c * 2, c * .6, c / 2, c, c / 2);
-   if (!isGhost) { const dark = new T.MeshStandardMaterial({ map: solidMat(m).map, color: '#8a8a95', roughness: 1 }), gold = new T.MeshStandardMaterial({ color: '#d8a24e', roughness: .5 });
-    box(c * .6, c * 1.5, c * .05, c / 2, c * 1.02, c / 2 + c * .3 + .01, dark); box(c * .08, c * .08, c * .08, c * .7, c * 1.0, c / 2 + c * .3 + .045, gold) }
+  else if (shape === 'stairs') { box(c, c / 2, c, c / 2, c / 4, c / 2); box(fx ? c / 2 : c, c / 2, fz ? c / 2 : c, c / 2 + fx * c / 4, c * .75, c / 2 + fz * c / 4) }
+  else { // door: a slab with a darker raised panel and a brass handle on the side it faces
+   const along = fz ? 'x' : 'z', thick = c * .45, wide = c * .96; // a door facing n/s is a slab in the x-y plane, facing e/w in the z-y plane
+   box(along === 'x' ? wide : thick, c * 2, along === 'x' ? thick : wide, c / 2, c, c / 2);
+   if (!isGhost) {
+    const dark = new T.MeshStandardMaterial({ map: solidMat(m).map, color: '#8a8a95', roughness: 1 }), gold = new T.MeshStandardMaterial({ color: '#d8a24e', roughness: .5 }), off = thick / 2 + .008;
+    for (const side of [1, -1]) {
+     const dx = fx * side * off, dz = fz * side * off;
+     box(along === 'x' ? c * .6 : .02, c * 1.5, along === 'x' ? .02 : c * .6, c / 2 + dx, c * 1.02, c / 2 + dz, dark);
+     box(along === 'x' ? c * .08 : .03, c * .08, along === 'x' ? .03 : c * .08, c / 2 + dx * 1.05 + (along === 'x' ? c * .2 : 0), c, c / 2 + dz * 1.05 + (along === 'x' ? 0 : c * .2), gold);
+    }
+   }
   }
   return g;
  }
 
  // ---- scene content ----
  function pileObj(p) { // a pyramid of small cubes: 3 x 3, then 2 x 2, then one on top (14), sorted by material
-  const g = new T.Group(), size = .22, slots = [];
+  const g = new T.Group(), size = .24, slots = [];
   for (const [n, y] of [[3, 0], [2, 1], [1, 2]]) for (let i = 0; i < n * n; i++) slots.push([(i % n - (n - 1) / 2) * size, y * size, (Math.floor(i / n) - (n - 1) / 2) * size]);
   let i = 0;
-  for (const m of MATS) for (let k = 0; k < (p[m] || 0) && i < slots.length; k++, i++) { const o = piece('block', m, 'r', false, size), [x, y, z] = slots[i]; o.position.set(x - size / 2, y, z - size / 2); g.add(o) }
+  for (const m of MATS) for (let k = 0; k < (p[m] || 0) && i < slots.length; k++, i++) { const o = piece('block', m, 's', false, size), [x, y, z] = slots[i]; o.position.set(x - size / 2, y, z - size / 2); g.add(o) }
   return g;
  }
  function syncPiles() {
@@ -98,7 +109,7 @@
    seen.add(key); let e = cellMeshes.get(key);
    if (!e || e.sig !== sig) {
     if (e) site.remove(e.obj);
-    const obj = piece(c.shape, c.material, c.facing, ghostNow); obj.position.set(c.x * C, c.y * C, 0); site.add(obj); e = { sig, obj }; cellMeshes.set(key, e);
+    const obj = piece(c.shape, c.material, c.facing, ghostNow); obj.position.set(c.x * C, c.y * C, c.z * C); obj.userData.cell = key; site.add(obj); e = { sig, obj }; cellMeshes.set(key, e);
    }
    e.obj.scale.setScalar(ghostNow && prog > 0 ? 1 + prog * .06 : 1); // the ghost swells a little as squats go in
   }
@@ -107,15 +118,15 @@
  function setCarry(m) {
   if (carry && carry.m === m) return;
   if (carry) { api.scene.remove(carry.obj); carry = null }
-  if (m) { const obj = piece('block', m, 'r', false, S * .17); obj.position.set(0, 0, 0); api.scene.add(obj); carry = { m, obj } }
+  if (m) { const obj = piece('block', m, 's', false, S * .17); api.scene.add(obj); carry = { m, obj } }
  }
  function putCarry() { // the block rests in front of his hands while he does push-ups
   if (!carry) return;
   const ux = Math.sin(YAW.pushup), uz = Math.cos(YAW.pushup), c = S * .17;
-  carry.obj.position.set(P.haul[0] + ux * HANDS * S * .8 - c / 2, .06, P.haul[1] + uz * HANDS * S * .8 - c / 2); carry.obj.rotation.y = 0;
+  carry.obj.position.set(P.haul[0] + ux * HANDS * S * .8 - c / 2, .06, P.haul[1] + uz * HANDS * S * .8 - c / 2);
  }
  function fly(obj, from, to, dur, land) { api.scene.add(obj); fliers.push({ obj, from, to, t0: now(), dur, land }) }
- function flyBlock(m, from, to, dur, land, size = .3) { const obj = piece('block', m, 'r', false, size); obj.children.forEach(o => o.position.sub(new T.Vector3(size / 2, size / 2, size / 2))); fly(obj, from, to, dur, land) }
+ function flyBlock(m, from, to, dur, land, size = .3) { const obj = piece('block', m, 's', false, size); obj.children.forEach(o => o.position.sub(new T.Vector3(size / 2, size / 2, size / 2))); fly(obj, from, to, dur, land) }
  function resync() { for (const m of MATS) { vis.mountain[m] = state.world.mountain[m]; vis.site[m] = state.world.site[m] } syncPiles() }
 
  // The blow lands: show the outcome of the oldest counted rep for this exercise.
@@ -123,7 +134,7 @@
   const item = pending[ex].shift(); if (!item) return ex === 'swing'; // an uncounted blow (none expected here): chip the rock only when digging
   const e = item.ev;
   if (e.type === 'dig') {
-   if (e.done) { const to = [P.mountain[0], .5, P.mountain[1]]; flyBlock(e.material, [rock[0], 1.6, rock[1]], to, .55, () => { vis.mountain[e.material]++; syncPiles() }) }
+   if (e.done) flyBlock(e.material, [rock[0], 1.6, rock[1]], [P.mountain[0], .5, P.mountain[1]], .55, () => { vis.mountain[e.material]++; syncPiles() });
    refreshUi(); return true; // the quarry's own hit effect: the boulder shakes and sheds shards
   }
   if (e.type === 'haul') {
@@ -131,10 +142,7 @@
    refreshUi(); return false;
   }
   if (e.type === 'place') {
-   if (e.done) {
-    const c = e.cell, p = cellWorld(c.x * C + C / 2, c.y * C + C / 2, C / 2);
-    flyBlock(c.material, [P.place[0], 1.1, P.place[1]], p, .5, () => { landing.delete(e.key); syncCells(); refreshUi() }, .26);
-   }
+   if (e.done) { const c = e.cell; flyBlock(c.material, [P.place[0], 1.1, P.place[1]], cellCenter(c.x, c.y, c.z, BUILD_SHAPES[c.shape].h), .55, () => { landing.delete(e.key); syncCells(); refreshUi() }, .26) }
    syncCells(); refreshUi(); return false;
   }
   return false;
@@ -144,9 +152,9 @@
  function rep(t = now()) {
   if (!api || t - state.lastRep < MIN_GAP) return false;
   const w = state.world, ev = w.rep(state.job, state.material);
-  if (ev.type === 'blocked') { toast(ev.reason); state.auto = false; $('bAuto').setAttribute('aria-pressed', 'false'); refreshUi(); return false }
+  if (ev.type === 'blocked') { toast(ev.reason); state.auto = false; refreshUi(); return false }
   state.lastRep = t; const ex = EX[state.job]; pending[ex].push({ ev });
-  if (ev.type === 'haul') { if (ev.progress === 1) { vis.mountain[ev.material]--; syncPiles(); setCarry(ev.material); putCarry() } }
+  if (ev.type === 'haul' && ev.progress === 1) { vis.mountain[ev.material]--; syncPiles(); setCarry(ev.material); putCarry() }
   if (ev.type === 'place') { if (ev.progress === 1) { for (const m of MATS) vis.site[m] = w.site[m]; syncPiles() } if (ev.done) landing.add(ev.key); syncCells() }
   api.hit(soloId, ex, 1); refreshUi(); return true;
  }
@@ -171,7 +179,7 @@
   for (const b of document.querySelectorAll('[data-job]')) { const j = b.dataset.job, blocked = !!w.why(j); b.setAttribute('aria-pressed', String(j === state.job)); b.classList.toggle('blocked', blocked); b.querySelector('small').textContent = JOB_NOTE[j](state.material) }
   for (const b of document.querySelectorAll('[data-material]')) b.setAttribute('aria-pressed', String(b.dataset.material === state.material));
   for (const b of document.querySelectorAll('[data-shape]')) b.setAttribute('aria-pressed', String(state.tool === 'draw' && b.dataset.shape === state.shape));
-  $('bFacing').textContent = state.shape === 'stairs' ? (state.facing === 'r' ? 'rise right' : 'rise left') : 'rise right';
+  $('bFacing').textContent = FACE_NAME[state.facing];
   document.querySelector('[data-tool="erase"]').setAttribute('aria-pressed', String(state.tool === 'erase'));
   $('bReason').textContent = why || ''; $('bRep').disabled = !!why;
   const need = w.need(state.job, state.material), done = w.progress(state.job, state.material);
@@ -179,7 +187,7 @@
   $('bBar').style.width = (need ? Math.round(done / need * 100) : 0) + '%';
   $('bMount').textContent = w.total(w.mountain) + (w.carrying ? ' +1' : ''); $('bSite').textContent = w.total(w.site);
   $('bDug').textContent = w.reps.dig; $('bHauled').textContent = w.reps.haul; $('bBuilt').textContent = w.reps.place;
-  const auto = state.auto; $('bAuto').setAttribute('aria-pressed', String(auto));
+  $('bAuto').setAttribute('aria-pressed', String(state.auto));
  }
  const mats = $('bMaterials');
  for (const m of MATS) {
@@ -188,49 +196,68 @@
   b.onclick = () => { state.material = m; refreshUi() }; mats.appendChild(b);
  }
  for (const b of document.querySelectorAll('[data-job]')) b.onclick = () => setJob(b.dataset.job);
- for (const b of document.querySelectorAll('[data-shape]')) b.onclick = () => { if (state.tool === 'draw' && state.shape === b.dataset.shape && b.dataset.shape === 'stairs') state.facing = state.facing === 'r' ? 'l' : 'r'; state.shape = b.dataset.shape; state.tool = 'draw'; refreshUi() };
+ for (const b of document.querySelectorAll('[data-shape]')) b.onclick = () => { state.shape = b.dataset.shape; state.tool = 'draw'; refreshUi() };
  document.querySelector('[data-tool="erase"]').onclick = () => { state.tool = state.tool === 'erase' ? 'draw' : 'erase'; refreshUi() };
- $('bRep').onclick = () => { if (!rep()) { /* too soon after the last rep: ignore */ } };
+ $('bTurn').onclick = () => { state.facing = BUILD_FACINGS[(BUILD_FACINGS.indexOf(state.facing) + 1) % 4]; refreshUi() };
+ $('bRotL').onclick = () => { state.azT -= Math.PI / 4 };
+ $('bRotR').onclick = () => { state.azT += Math.PI / 4 };
+ $('bRep').onclick = () => rep();
  $('bAuto').onclick = () => { state.auto = !state.auto; state.nextAuto = 0; refreshUi() };
  let armed = 0;
  $('bReset').onclick = () => { // two taps within 3 s (frames may ignore confirm())
   const b = $('bReset'); if (now() > armed) { armed = now() + 3; b.textContent = 'SURE?'; setTimeout(() => { if (now() > armed) b.textContent = 'CLEAR' }, 3100); return }
   armed = 0; b.textContent = 'CLEAR'; state.world = new BuildWorld(); state.auto = false; for (const k in pending) pending[k].length = 0; landing.clear(); setCarry(null); for (const f of fliers.splice(0)) api.scene.remove(f.obj); resync(); syncCells(); refreshUi();
  };
- $('bSample').onclick = () => { // a small hut: floor, two walls, a door, stairs and a roof
-  const w = state.world, put = (x, y, m, s, f) => w.plan(x, y, m, s, f);
-  for (let x = 2; x <= 8; x++) if (x !== 5) put(x, 0, 'stone', 'block'); put(5, 0, 'marble', 'door');
-  for (const x of [2, 8]) for (const y of [1, 2]) put(x, y, 'brick', 'block');
-  for (let x = 1; x <= 9; x++) put(x, 3, x % 2 ? 'sandstone' : 'rubble', 'block'); put(1, 0, 'stone', 'stairs', 'r'); put(9, 0, 'stone', 'stairs', 'l'); put(5, 2, 'obsidian', 'block'); put(5, 4, 'marble', 'block');
-  syncCells(); refreshUi(); toast('A hut is drawn. Dig, haul and build, or switch AUTO on.');
+ $('bSample').onclick = () => { // a small house on the plot: floor, four walls with a door, a stair, a roof and a pillar
+  const w = state.world, put = (x, y, z, m, s, f) => w.plan(x, y, z, m, s, f), x0 = 2, x1 = 7, z0 = 2, z1 = 7;
+  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) put(x, 0, z, 'stone', 'block');
+  for (let y = 1; y <= 2; y++) for (let i = x0; i <= x1; i++) for (const [x, z] of [[i, z0], [i, z1], [x0, i], [x1, i]]) put(x, y, z, 'brick', 'block');
+  put(4, 1, z1, 'marble', 'door', 's'); put(8, 1, z1, 'stone', 'stairs', 'w'); put(8, 0, z1 + 1, 'stone', 'stairs', 'n');
+  for (let x = x0 - 1; x <= x1 + 1; x++) for (let z = z0 - 1; z <= z1 + 1; z++) if (x < x0 || x > x1 || z < z0 || z > z1 || (x + z) % 2) put(x, 3, z, (x + z) % 2 ? 'sandstone' : 'rubble', 'block');
+  put(1, 0, 1, 'obsidian', 'block'); put(1, 1, 1, 'obsidian', 'block'); put(1, 2, 1, 'marble', 'block');
+  syncCells(); refreshUi(); toast('A house is drawn. Dig, haul and build, or switch AUTO on. Drag to look around.');
  };
 
- // ---- picking a wall cell with the pointer ----
- function cellAt(e) {
+ // ---- looking round, and picking a cell with the pointer ----
+ const ray = () => ray.r ||= new T.Raycaster();
+ function cellAt(e, erase) {
   if (!api) return null;
   const r = canvas.getBoundingClientRect(), ndc = new T.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1));
-  const ray = new T.Raycaster(); ray.setFromCamera(ndc, api.camera);
-  const n = new T.Vector3(wallOut[0], 0, wallOut[1]), plane = new T.Plane().setFromNormalAndCoplanarPoint(n, new T.Vector3(P.site[0] + wallOut[0] * C / 2, 0, P.site[1] + wallOut[1] * C / 2)), hit = new T.Vector3();
-  if (!ray.ray.intersectPlane(plane, hit)) return null;
-  const l = site.worldToLocal(hit.clone()), x = Math.floor(l.x / C), y = Math.floor(l.y / C);
-  return x >= 0 && x < G.w && y >= 0 && y < G.h ? { x, y } : null;
+  const rc = ray(); rc.setFromCamera(ndc, api.camera);
+  const targets = [floor]; site.traverse(o => { if (o.isMesh && o !== floor) targets.push(o) });
+  const hit = rc.intersectObjects(targets, false)[0]; if (!hit) return null;
+  const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld), p = hit.point.clone().addScaledVector(n, (erase ? -1 : 1) * C * .25), l = site.worldToLocal(p);
+  const x = Math.floor(l.x / C), y = Math.floor(l.y / C), z = Math.floor(l.z / C);
+  return x >= 0 && x < G.w && y >= 0 && y < G.h && z >= 0 && z < G.d ? { x, y, z } : null;
  }
- canvas.addEventListener('pointermove', e => { state.hover = cellAt(e) });
- canvas.addEventListener('pointerleave', () => { state.hover = null });
- canvas.addEventListener('pointerdown', e => {
-  const c = cellAt(e); state.hover = c; if (!c) return;
-  const r = state.tool === 'erase' ? state.world.erase(c.x, c.y) : state.world.plan(c.x, c.y, state.material, state.shape, state.facing);
+ let drag = null;
+ canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, az: state.azT, el: state.el, moved: false }; try { canvas.setPointerCapture(e.pointerId) } catch { } });
+ canvas.addEventListener('pointermove', e => {
+  if (drag) {
+   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+   if (!drag.moved && Math.hypot(dx, dy) > 6) { drag.moved = true; state.hover = null; canvas.style.cursor = 'grabbing' }
+   if (drag.moved) { state.azT = drag.az - dx * .008; state.az = state.azT; state.el = Math.min(1.2, Math.max(.25, drag.el + dy * .005)) }
+  } else state.hover = cellAt(e, state.tool === 'erase');
+ });
+ canvas.addEventListener('pointerup', e => {
+  const d = drag; drag = null; canvas.style.cursor = '';
+  if (!d || d.moved) return;
+  const erase = state.tool === 'erase', c = cellAt(e, erase); state.hover = c; if (!c) return;
+  const r = erase ? state.world.erase(c.x, c.y, c.z) : state.world.plan(c.x, c.y, c.z, state.material, state.shape, state.facing);
   if (!r.ok) toast(r.reason); else if (r.removed === 'built') { toast('Taken apart: the blocks went back to the site.'); for (const m of MATS) vis.site[m] = state.world.site[m]; syncPiles() }
   syncCells(); refreshUi();
  });
+ canvas.addEventListener('pointercancel', () => { drag = null; canvas.style.cursor = '' });
+ canvas.addEventListener('pointerleave', () => { if (!drag) state.hover = null });
+ canvas.addEventListener('wheel', e => { e.preventDefault(); state.zoom = Math.min(1.8, Math.max(.6, state.zoom * (e.deltaY > 0 ? .92 : 1.08))) }, { passive: false });
  function syncPreview() {
-  const h = state.hover, want = h && (state.tool === 'erase' ? 'e' : [state.shape, state.material, state.facing, h.x, h.y].join());
+  const c = state.hover, want = c && [state.tool, state.shape, state.material, state.facing, c.x, c.y, c.z].join();
   if (preview && preview.sig === want) return;
   if (preview) { site.remove(preview.obj); preview = null }
-  if (!h) return;
-  const obj = state.tool === 'erase' ? new T.LineSegments(new T.EdgesGeometry(geo(C, C, C)), new T.LineBasicMaterial({ color: '#ff4d4d', depthWrite: false })) : piece(state.shape, state.material, state.facing, true);
-  if (state.tool === 'erase') obj.position.set(h.x * C + C / 2, h.y * C + C / 2, C / 2); else obj.position.set(h.x * C, h.y * C, 0);
-  site.add(obj); preview = { sig: want, obj };
+  if (!c) return;
+  const erase = state.tool === 'erase', obj = erase ? new T.LineSegments(new T.EdgesGeometry(geo(C, C, C)), new T.LineBasicMaterial({ color: '#ff4d4d', depthWrite: false })) : piece(state.shape, state.material, state.facing, true);
+  if (erase) obj.position.set(c.x * C + C / 2, c.y * C + C / 2, c.z * C + C / 2); else obj.position.set(c.x * C, c.y * C, c.z * C);
+  obj.traverse(o => { o.raycast = () => { } }); site.add(obj); preview = { sig: want, obj };
  }
 
  // ---- frame loop: only while the Build screen is visible ----
@@ -241,7 +268,9 @@
    f.obj.position.set(f.from[0] + (f.to[0] - f.from[0]) * k, f.from[1] + (f.to[1] - f.from[1]) * k + Math.sin(k * Math.PI) * .9, f.from[2] + (f.to[2] - f.from[2]) * k);
    if (k >= 1) { api.scene.remove(f.obj); fliers.splice(i, 1); f.land && f.land() }
   }
-  const v = api.opts.view, asp = canvas.clientWidth / Math.max(1, canvas.clientHeight); v.zoom = Math.min(1.05, Math.max(7.2, 6.2 / asp) * asp / 10.6); v.y = asp < 1 ? .6 : .9; // the whole slab fits at any shape of screen
+  if (!drag?.moved) state.az += (state.azT - state.az) * (1 - Math.exp(-dt * 9));
+  const v = api.opts.view, asp = canvas.clientWidth / Math.max(1, canvas.clientHeight); // everything fits at any shape of screen
+  api.opts.az = state.az; api.opts.elev = state.el; v.zoom = Math.min(1.1, Math.max(7.2, 6.2 / asp) * asp / 14.5) * state.zoom; v.y = asp < 1 ? .5 : .9;
   putCarry(); syncPreview();
   if (!fliers.length && !pending.swing.length && !pending.pushup.length && !pending.squat.length) { let drift = false; for (const m of MATS) if (vis.mountain[m] !== state.world.mountain[m] || vis.site[m] !== state.world.site[m]) drift = true; if (drift && !state.world.building && !state.world.carrying) resync() }
   if (state.auto && t >= state.nextAuto && t - state.lastRep >= MIN_GAP) {
@@ -261,20 +290,22 @@
   const M = window.Scene3D; if (!M || !window.stageReady || !window.stageReady()) return false;
   try {
    gid = typeof stageGnomeId === 'function' ? stageGnomeId : () => 'me'; soloId = gid();
-   // a calmer picture than the quarry's: front view, fine pixels, many colours, almost no dither, so blocks stay readable
-   api = M.create(canvas, { mode: 'solo', elev: .5, slabRot: 0, slabAt: [.2, 0, .1], slabScale: [1.25, .8], rockAt: [rock[0], 0, rock[1]], gnomeRoot: [P.dig[0], P.dig[1], 0], spots: SPOTS, yawFor: YAW, view: { x: .2, y: .9, zoom: 1 }, levels: 32, dither: .05, edge: .01, pixelH: 400, minK: 1, beforeHit: (g, ex) => impact(g, ex) });
+   // a calmer picture than the quarry's: fine pixels, many colours, almost no dither; the camera is free (opts.az / opts.elev change every frame)
+   api = M.create(canvas, { mode: 'solo', elev: state.el, az: state.az, slabRot: 0, slabAt: [.3, 0, 0], slabScale: [1.6, 1.25], flames: [[-5.0, -3.7], [5.4, -3.7]], rockAt: [rock[0], 0, rock[1]], gnomeRoot: [P.dig[0], P.dig[1], 0], spots: SPOTS, yawFor: YAW,
+    view: { x: .3, y: .9, zoom: 1 }, levels: 32, dither: .05, edge: .01, pixelH: 400, minK: 1, beforeHit: (g, ex) => impact(g, ex) });
    T = api.THREE; api.setGnomes([soloId]); api.setHp(1);
-   site = new T.Group(); site.position.set(P.site[0], 0, P.site[1]); api.scene.add(site);
-   const base = new T.Mesh(geo(G.w * C + .3, .06, C + .3), new T.MeshStandardMaterial({ color: '#4a3f52', roughness: 1 })); base.position.set(G.w * C / 2, -.02, C / 2); site.add(base); // foundation strip under the wall
-   const grid = new T.LineSegments(new T.BufferGeometry(), new T.LineBasicMaterial({ color: '#9a8fae', transparent: true, opacity: .3, depthWrite: false })), pts = [];
-   for (let i = 0; i <= G.w; i++) pts.push(i * C, 0, 0, i * C, G.h * C, 0);
-   for (let j = 0; j <= G.h; j++) pts.push(0, j * C, 0, G.w * C, j * C, 0);
-   grid.geometry.setAttribute('position', new T.Float32BufferAttribute(pts, 3)); site.add(grid);
+   site = new T.Group(); site.position.set(O[0], 0, O[1]); api.scene.add(site);
+   floor = new T.Mesh(new T.PlaneGeometry(G.w * C, G.d * C), new T.MeshStandardMaterial({ color: '#4b4058', roughness: 1 })); floor.rotation.x = -Math.PI / 2; floor.position.set(G.w * C / 2, .01, G.d * C / 2); site.add(floor); // the plot: also what the pointer hits
+   const grid = new T.LineSegments(new T.BufferGeometry(), new T.LineBasicMaterial({ color: '#a89cc0', transparent: true, opacity: .35, depthWrite: false })), pts = [];
+   for (let i = 0; i <= G.w; i++) pts.push(i * C, .02, 0, i * C, .02, G.d * C);
+   for (let j = 0; j <= G.d; j++) pts.push(0, .02, j * C, G.w * C, .02, j * C);
+   grid.geometry.setAttribute('position', new T.Float32BufferAttribute(pts, 3)); grid.raycast = () => { }; site.add(grid);
+   const rim = new T.Mesh(geo(G.w * C + .16, .06, G.d * C + .16), new T.MeshStandardMaterial({ color: '#2a2233', roughness: 1 })); rim.position.set(G.w * C / 2, -.02, G.d * C / 2); rim.raycast = () => { }; site.add(rim);
    resync(); syncCells(); refreshUi(); return true;
   } catch (e) { failed = true; console.error('build scene failed', e); toast('3D view unavailable: ' + e.message); return true }
  }
  function start() { if (running || !visible()) return; if (!boot()) { setTimeout(start, 250); return } if (failed) return; running = true; last = performance.now() / 1000; requestAnimationFrame(frame) }
  window.addEventListener('hashchange', () => setTimeout(start, 0)); document.addEventListener('visibilitychange', start); window.addEventListener('stage-ready', start);
- window.buildDebug = () => ({ state, vis, pending, api, P }); // for tests and diagnostics
+ window.buildDebug = () => ({ state, vis, pending, api, P, cellAt, syncCells, resync }); // for tests and diagnostics
  refreshUi(); start();
 })();

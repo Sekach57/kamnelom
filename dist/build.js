@@ -1,8 +1,10 @@
 'use strict';
-// Build mode logic (docs/BUILD_MODE.md): materials, shapes, two piles (at the mountain and at the site) and a blueprint.
+// Build mode logic (docs/BUILD_MODE.md): materials, shapes, two piles (at the mountain and at the site) and a 3D blueprint.
 // Pure state: no DOM, camera or timers, so it runs in Node tests. One call to rep() is one counted repetition.
-// Grid: x to the right, y up (row 0 stands on the ground). A door is anchored at its bottom cell and covers two rows.
-const BUILD_GRID = { w: 12, h: 8 };
+// Grid: x to the right, z towards the viewer (depth), y up (layer 0 stands on the floor). A door covers two layers.
+// facing is the way stairs rise, or the way a door faces: 'n' (-z), 'e' (+x), 's' (+z), 'w' (-x).
+const BUILD_GRID = { w: 10, d: 10, h: 6 };
+const BUILD_FACINGS = ['n', 'e', 's', 'w'];
 // dig = swings needed to dig one block (hardness). Hauling and placing do not depend on the material.
 const BUILD_MATERIALS = {
  rubble: { name: 'Rubble', dig: 4 }, sandstone: { name: 'Sandstone', dig: 6 }, brick: { name: 'Brick', dig: 8 },
@@ -17,8 +19,8 @@ const BUILD_JOBS = {
  haul: { name: 'Haul', exercise: 'pushup', reps: 5 },
  place: { name: 'Build', exercise: 'squat', repsPerBlock: 20 }
 };
-const BUILD_VERSION = 1;
-const buildKey = (x, y) => x + ',' + y;
+const BUILD_VERSION = 2;
+const buildKey = (x, y, z) => x + ',' + y + ',' + z;
 const buildZero = () => Object.fromEntries(Object.keys(BUILD_MATERIALS).map(m => [m, 0]));
 const buildCount = v => Number.isInteger(v) && v >= 0 ? Math.min(v, 1e6) : 0;
 const buildFail = reason => ({ ok: false, reason });
@@ -33,36 +35,37 @@ class BuildWorld {
   this.reps = { dig: 0, haul: 0, place: 0 };
  }
  // --- blueprint ---
- occupant(x, y) {
-  for (const key in this.cells) { const c = this.cells[key]; if (c.x === x && y >= c.y && y < c.y + BUILD_SHAPES[c.shape].h) return c }
+ occupant(x, y, z) {
+  for (const key in this.cells) { const c = this.cells[key]; if (c.x === x && c.z === z && y >= c.y && y < c.y + BUILD_SHAPES[c.shape].h) return c }
   return null;
  }
  // Draw a ghost. Overlapping ghosts are replaced; a built cell must be taken apart first.
- plan(x, y, material, shape, facing = 'r') {
+ plan(x, y, z, material, shape, facing = 's') {
   const s = BUILD_SHAPES[shape];
   if (!BUILD_MATERIALS[material]) return buildFail('Unknown material.');
   if (!s) return buildFail('Unknown shape.');
-  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || x >= BUILD_GRID.w || y < 0 || y + s.h > BUILD_GRID.h) return buildFail('Cannot build here.');
-  const hit = new Set(); for (let i = 0; i < s.h; i++) { const c = this.occupant(x, y + i); if (c) hit.add(c) }
+  const G = BUILD_GRID;
+  if (![x, y, z].every(Number.isInteger) || x < 0 || x >= G.w || z < 0 || z >= G.d || y < 0 || y + s.h > G.h) return buildFail('Cannot build here.');
+  const hit = new Set(); for (let i = 0; i < s.h; i++) { const c = this.occupant(x, y + i, z); if (c) hit.add(c) }
   for (const c of hit) if (c.built) return buildFail('Cell taken: take it apart first.');
   for (const c of hit) this.drop(c);
-  this.cells[buildKey(x, y)] = { x, y, material, shape, facing: facing === 'l' ? 'l' : 'r', built: false };
+  this.cells[buildKey(x, y, z)] = { x, y, z, material, shape, facing: BUILD_FACINGS.includes(facing) ? facing : 's', built: false };
   return { ok: true };
  }
  // Remove a ghost, or take a built piece apart: its blocks go back to the site pile, no exercise needed.
- erase(x, y) {
-  const c = this.occupant(x, y); if (!c) return buildFail('Nothing here.');
+ erase(x, y, z) {
+  const c = this.occupant(x, y, z); if (!c) return buildFail('Nothing here.');
   const built = c.built; this.drop(c);
   if (built) this.site[c.material] += BUILD_SHAPES[c.shape].blocks;
   return { ok: true, removed: built ? 'built' : 'plan', material: c.material, shape: c.shape };
  }
- drop(c) { const key = buildKey(c.x, c.y); if (this.building === key) this.cancelBuilding(); delete this.cells[key] }
+ drop(c) { const key = buildKey(c.x, c.y, c.z); if (this.building === key) this.cancelBuilding(); delete this.cells[key] }
  cancelBuilding() {
   const c = this.cells[this.building]; if (c) this.site[c.material] += BUILD_SHAPES[c.shape].blocks;
   this.building = null; this.placeProgress = 0;
  }
- // Unbuilt cells, bottom row first, then left to right.
- ghosts() { return Object.values(this.cells).filter(c => !c.built).sort((a, b) => a.y - b.y || a.x - b.x) }
+ // Unbuilt cells: lowest layer first, then back to front, then left to right.
+ ghosts() { return Object.values(this.cells).filter(c => !c.built).sort((a, b) => a.y - b.y || a.z - b.z || a.x - b.x) }
  affordable(c) { return this.site[c.material] >= BUILD_SHAPES[c.shape].blocks }
  target() { return this.ghosts().find(c => this.affordable(c)) || null }
  // --- jobs ---
@@ -112,7 +115,7 @@ class BuildWorld {
    this.site[material]++; this.carrying = null; this.haulProgress = 0;
    return { type: 'haul', material, done: true, progress: need, need };
   }
-  if (!this.building) { const c = this.target(), key = buildKey(c.x, c.y); this.site[c.material] -= BUILD_SHAPES[c.shape].blocks; this.building = key; this.placeProgress = 0 }
+  if (!this.building) { const c = this.target(), key = buildKey(c.x, c.y, c.z); this.site[c.material] -= BUILD_SHAPES[c.shape].blocks; this.building = key; this.placeProgress = 0 }
   const key = this.building, c = this.cells[key], need = BUILD_SHAPES[c.shape].blocks * BUILD_JOBS.place.repsPerBlock, p = ++this.placeProgress; this.reps.place++;
   if (p < need) return { type: 'place', key, cell: c, done: false, progress: p, need };
   c.built = true; this.building = null; this.placeProgress = 0;
@@ -132,11 +135,11 @@ class BuildWorld {
   for (const j in w.reps) w.reps[j] = buildCount(raw.reps?.[j]);
   for (const c of Array.isArray(raw.cells) ? raw.cells : []) {
    if (!c || typeof c !== 'object' || !BUILD_MATERIALS[c.material] || !BUILD_SHAPES[c.shape]) continue;
-   const r = w.plan(c.x, c.y, c.material, c.shape, c.facing); if (r.ok && c.built === true) w.cells[buildKey(c.x, c.y)].built = true;
+   const r = w.plan(c.x, c.y, c.z, c.material, c.shape, c.facing); if (r.ok && c.built === true) w.cells[buildKey(c.x, c.y, c.z)].built = true;
   }
   if (BUILD_MATERIALS[raw.carrying]) { w.carrying = raw.carrying; w.haulProgress = Math.min(buildCount(raw.haulProgress), BUILD_JOBS.haul.reps - 1) }
   const b = w.cells[raw.building]; if (b && !b.built) { w.building = raw.building; w.placeProgress = Math.min(buildCount(raw.placeProgress), BUILD_SHAPES[b.shape].blocks * BUILD_JOBS.place.repsPerBlock - 1) }
   return w;
  }
 }
-if (typeof module !== 'undefined') module.exports = { BuildWorld, BUILD_GRID, BUILD_MATERIALS, BUILD_SHAPES, BUILD_JOBS, BUILD_VERSION, buildKey };
+if (typeof module !== 'undefined') module.exports = { BuildWorld, BUILD_GRID, BUILD_FACINGS, BUILD_MATERIALS, BUILD_SHAPES, BUILD_JOBS, BUILD_VERSION, buildKey };
