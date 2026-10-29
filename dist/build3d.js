@@ -10,21 +10,21 @@
  const MATS = Object.keys(BUILD_MATERIALS), G = BUILD_GRID;
  const C = .4, S = 1.6; // wall cell size and dwarf scale, world units
  const MIN_GAP = .8; // seconds between counted reps, as in the quarry
- // ---- layout, world units (x right, z towards the viewer). The wall and the piles share the slab's 45 degree turn, so two faces and the top show.
+ // ---- layout, world units (x right, z towards the viewer). Front view: the wall runs along x and faces the camera, the dwarf works in profile.
  const P = {
-  site: [-3.5, 1.1], // bottom left corner of the wall; it runs up and to the right
-  dig: [1.5, -1.9], boulderDist: 2.56, // he stands here and faces the boulder (the quarry's own distance and angle)
-  mountain: [2.0, .6], sitePile: [-2.1, 2.7], // piles of finished blocks
-  haul: [1.6, 2.2], // where he does push-ups, facing the site pile
-  place: [-.6, .6] // where he squats, facing the wall
+  site: [-2.4, -1.3], // bottom left front corner of the wall; it runs to the right
+  dig: [1.2, -.3], boulderDist: 2.4, // he stands here and faces the boulder on his right
+  mountain: [3.0, 1.3], sitePile: [-3.5, 1.7], // piles of finished blocks
+  haul: [1.4, 1.5], // where he does push-ups, facing the site pile
+  place: [-3.4, .1] // where he squats, left of the wall so he never hides it
  };
- const DIG_YAW = Math.PI / 3, rock = [P.dig[0] + P.boulderDist * Math.sin(DIG_YAW), P.dig[1] + P.boulderDist * Math.cos(DIG_YAW)];
- const wallDir = [Math.SQRT1_2, -Math.SQRT1_2], wallOut = [Math.SQRT1_2, Math.SQRT1_2]; // along the wall, and out of its front face
+ const DIG_YAW = Math.PI / 2, rock = [P.dig[0] + P.boulderDist * Math.sin(DIG_YAW), P.dig[1] + P.boulderDist * Math.cos(DIG_YAW)];
+ const wallDir = [1, 0], wallOut = [0, 1]; // along the wall, and out of its front face
  const cellWorld = (x, y, z = 0) => [P.site[0] + wallDir[0] * x + wallOut[0] * z, y, P.site[1] + wallDir[1] * x + wallOut[1] * z];
  const yawTo = (from, to) => Math.atan2(to[0] - from[0], to[1] - from[1]);
  const spot = w => [(w[0] - P.dig[0]) / S, (w[1] - P.dig[1]) / S]; // gnome spots are in his own units, relative to his root
  const SPOTS = { swing: [0, 0], pushup: spot(P.haul), squat: spot(P.place) };
- const YAW = { swing: DIG_YAW, pushup: yawTo(P.haul, P.sitePile), squat: yawTo(P.place, [P.site[0] + wallDir[0] * G.w * C / 2, P.site[1] + wallDir[1] * G.w * C / 2]) };
+ const YAW = { swing: DIG_YAW, pushup: yawTo(P.haul, P.sitePile), squat: Math.PI / 2 };
  const HANDS = 1.15; // how far in front of the lying dwarf the block he pushes rests
 
  const state = { world: new BuildWorld(), job: 'dig', material: 'stone', shape: 'block', facing: 'r', tool: 'draw', auto: false, nextAuto: 0, lastRep: -9, hover: null, toastUntil: 0 };
@@ -87,7 +87,7 @@
    const p = k === 'mountain' ? vis.mountain : vis.site, sig = MATS.map(m => p[m] || 0).join(), at = k === 'mountain' ? P.mountain : P.sitePile;
    if (pileMeshes[k]?.sig === sig) continue;
    if (pileMeshes[k]) api.scene.remove(pileMeshes[k].obj);
-   const obj = pileObj(p); obj.position.set(at[0], 0, at[1]); obj.rotation.y = Math.PI / 4; api.scene.add(obj); pileMeshes[k] = { sig, obj };
+   const obj = pileObj(p); obj.position.set(at[0], 0, at[1]); api.scene.add(obj); pileMeshes[k] = { sig, obj };
   }
  }
  function syncCells() {
@@ -241,7 +241,7 @@
    f.obj.position.set(f.from[0] + (f.to[0] - f.from[0]) * k, f.from[1] + (f.to[1] - f.from[1]) * k + Math.sin(k * Math.PI) * .9, f.from[2] + (f.to[2] - f.from[2]) * k);
    if (k >= 1) { api.scene.remove(f.obj); fliers.splice(i, 1); f.land && f.land() }
   }
-  const v = api.opts.view, narrow = canvas.clientWidth < 700; v.zoom = narrow ? .52 : .82; v.x = narrow ? .55 : .1; v.y = narrow ? .5 : .7; // a phone shows the whole slab, smaller
+  const v = api.opts.view, asp = canvas.clientWidth / Math.max(1, canvas.clientHeight); v.zoom = Math.min(1.05, Math.max(7.2, 6.2 / asp) * asp / 10.6); v.y = asp < 1 ? .6 : .9; // the whole slab fits at any shape of screen
   putCarry(); syncPreview();
   if (!fliers.length && !pending.swing.length && !pending.pushup.length && !pending.squat.length) { let drift = false; for (const m of MATS) if (vis.mountain[m] !== state.world.mountain[m] || vis.site[m] !== state.world.site[m]) drift = true; if (drift && !state.world.building && !state.world.carrying) resync() }
   if (state.auto && t >= state.nextAuto && t - state.lastRep >= MIN_GAP) {
@@ -261,9 +261,10 @@
   const M = window.Scene3D; if (!M || !window.stageReady || !window.stageReady()) return false;
   try {
    gid = typeof stageGnomeId === 'function' ? stageGnomeId : () => 'me'; soloId = gid();
-   api = M.create(canvas, { mode: 'solo', slabAt: [-.2, 0, -.2], slabScale: 1.12, rockAt: [rock[0], 0, rock[1]], gnomeRoot: [P.dig[0], P.dig[1], 0], spots: SPOTS, yawFor: YAW, view: { x: .1, y: .7, zoom: .82 }, beforeHit: (g, ex) => impact(g, ex) });
+   // a calmer picture than the quarry's: front view, fine pixels, many colours, almost no dither, so blocks stay readable
+   api = M.create(canvas, { mode: 'solo', elev: .5, slabRot: 0, slabAt: [.2, 0, .1], slabScale: [1.25, .8], rockAt: [rock[0], 0, rock[1]], gnomeRoot: [P.dig[0], P.dig[1], 0], spots: SPOTS, yawFor: YAW, view: { x: .2, y: .9, zoom: 1 }, levels: 32, dither: .05, edge: .01, pixelH: 400, minK: 1, beforeHit: (g, ex) => impact(g, ex) });
    T = api.THREE; api.setGnomes([soloId]); api.setHp(1);
-   site = new T.Group(); site.position.set(P.site[0], 0, P.site[1]); site.rotation.y = Math.PI / 4; api.scene.add(site);
+   site = new T.Group(); site.position.set(P.site[0], 0, P.site[1]); api.scene.add(site);
    const base = new T.Mesh(geo(G.w * C + .3, .06, C + .3), new T.MeshStandardMaterial({ color: '#4a3f52', roughness: 1 })); base.position.set(G.w * C / 2, -.02, C / 2); site.add(base); // foundation strip under the wall
    const grid = new T.LineSegments(new T.BufferGeometry(), new T.LineBasicMaterial({ color: '#9a8fae', transparent: true, opacity: .3, depthWrite: false })), pts = [];
    for (let i = 0; i <= G.w; i++) pts.push(i * C, 0, 0, i * C, G.h * C, 0);

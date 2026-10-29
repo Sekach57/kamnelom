@@ -178,13 +178,13 @@ export function create(canvas, opts = {}) {
  const scene = new THREE.Scene(); scene.background = new THREE.Color('#0c0a11');
  // isometric camera: orthographic, 30 degrees down; the scene renders small and is upscaled without smoothing
  const camera = new THREE.OrthographicCamera(-5, 5, 3, -3, .1, 80);
- const ELEV = group ? .8 : .52, AZ = 0;
+ const ELEV = opts.elev ?? (group ? .8 : .52), AZ = 0; // opts.elev: camera elevation in radians
  scene.add(new THREE.HemisphereLight('#b9bfff', '#5b4650', 1.7));
  const sun = new THREE.DirectionalLight('#ffe2bd', 2.6); sun.position.set(-3, 6, 4); scene.add(sun);
  const fill = new THREE.DirectionalLight('#ffcfa0', 1.5); fill.position.set(2, 3, 8); scene.add(fill);
  const glow = new THREE.PointLight('#ff8a3c', 3, 7, 1.6); glow.position.set(0, 1.2, 0); scene.add(glow);
  // diorama: a diamond-shaped stone slab floating in the dark
- const slabW = group ? 10 : 7.4, slab = new THREE.Group(); slab.position.set(...(opts.slabAt || [group ? 0 : .5, 0, 0])); slab.rotation.y = Math.PI / 4; if (opts.slabScale) slab.scale.set(opts.slabScale, 1, opts.slabScale); scene.add(slab);
+ const slabW = group ? 10 : 7.4, slab = new THREE.Group(); slab.position.set(...(opts.slabAt || [group ? 0 : .5, 0, 0])); slab.rotation.y = opts.slabRot ?? Math.PI / 4; if (opts.slabScale) { const k = [].concat(opts.slabScale); slab.scale.set(k[0], 1, k[1] ?? k[0]) } scene.add(slab);
  const top = new THREE.Mesh(new THREE.PlaneGeometry(slabW, slabW), new THREE.MeshStandardMaterial({ map: tileTexture(), roughness: 1 })); top.rotation.x = -Math.PI / 2; slab.add(top);
  const side = new THREE.MeshStandardMaterial({ map: strataTexture(), roughness: 1, flatShading: true }), depth = 1.3;
  const body = new THREE.Mesh(new THREE.BoxGeometry(slabW, depth, slabW), [side, side, new THREE.MeshBasicMaterial({ visible: false }), side, side, side]); body.position.y = -depth / 2 - .005; slab.add(body);
@@ -256,10 +256,11 @@ export function create(canvas, opts = {}) {
  function applyShift() { if (!rw) return; camera.setViewOffset(rw, rh, -shiftNow.x * rw, -shiftNow.y * rh, rw, rh) }
  let rw = 0, rh = 0, pw = 1, ph = 1, aspect = 1.6;
  const rt = new THREE.WebGLRenderTarget(2, 2, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(2, 2) });
+ // opts.levels / dither / edge: palette steps per channel, dither strength, outline depth threshold (the quarry keeps 9 / .35 / .008)
  const post = new THREE.ShaderMaterial({
-  uniforms: { tC: { value: rt.texture }, tD: { value: rt.depthTexture }, px: { value: new THREE.Vector2(1, 1) } }, depthTest: false, depthWrite: false,
+  uniforms: { tC: { value: rt.texture }, tD: { value: rt.depthTexture }, px: { value: new THREE.Vector2(1, 1) }, uL: { value: opts.levels ?? 9 }, uD: { value: opts.dither ?? .35 }, uE: { value: opts.edge ?? .008 } }, depthTest: false, depthWrite: false,
   vertexShader: 'varying vec2 v;void main(){v=uv;gl_Position=vec4(position.xy,0.,1.);}',
-  fragmentShader: `precision highp float;varying vec2 v;uniform sampler2D tC,tD;uniform vec2 px;
+  fragmentShader: `precision highp float;varying vec2 v;uniform sampler2D tC,tD;uniform vec2 px;uniform float uL,uD,uE;
   float bayer(vec2 p){vec2 q=mod(p,4.);float a=mod(q.x,2.),b=mod(q.y,2.);float i=(a*2.+b*3.-2.*a*b)*4.;float c=floor(q.x/2.),d=floor(q.y/2.);return(i+(c*2.+d*3.-2.*c*d))/16.;}
   void main(){
    vec3 c=texture2D(tC,v).rgb;float d=texture2D(tD,v).r;
@@ -267,15 +268,16 @@ export function create(canvas, opts = {}) {
    for(int i=0;i<4;i++){float n=texture2D(tD,v+o[i]).r;e=max(e,abs(n-d));}
    c=1.-exp(-c*1.25);c=pow(c,vec3(.4545));
    float l=dot(c,vec3(.3,.59,.11));c=mix(vec3(l),c,1.3);c=(c-.5)*1.12+.5;c=clamp(c,0.,1.);
-   c=pow(c,vec3(.88));float L=9.;float t=bayer(gl_FragCoord.xy)-.5;
-   c=floor(c*L+.5+t*.35)/L;
-   if(e>.008)c=mix(c*.18,vec3(.03,.02,.05),.7);
+   c=pow(c,vec3(.88));float L=uL;float t=bayer(gl_FragCoord.xy)-.5;
+   c=floor(c*L+.5+t*uD)/L;
+   if(e>uE)c=mix(c*.18,vec3(.03,.02,.05),.7);
    gl_FragColor=vec4(c,1.);}`
  });
  const postScene = new THREE.Scene(), postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1); postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post));
  function resize() {
   const w = canvas.clientWidth || 640, h = canvas.clientHeight || 360; if (w === rw && h === rh) return; rw = w; rh = h;
-  const k = Math.max(2, Math.round(h / (group ? 300 : 270))); pw = Math.max(2, Math.ceil(w / k)); ph = Math.max(2, Math.ceil(h / k));
+  // opts.pixelH: render height in pixels (smaller number, chunkier pixels); opts.minK: smallest pixel size in screen pixels
+  const k = Math.max(opts.minK ?? 2, Math.round(h / (opts.pixelH || (group ? 300 : 270)))); pw = Math.max(2, Math.ceil(w / k)); ph = Math.max(2, Math.ceil(h / k));
   renderer.setSize(pw, ph, false); rt.setSize(pw, ph); post.uniforms.px.value.set(1 / pw, 1 / ph); aspect = w / h;
   const V = group ? Math.max(7.4, 8.2 / aspect) : Math.max(7.2, 6.2 / aspect); camera.top = V / 2; camera.bottom = -V / 2; camera.left = -V / 2 * aspect; camera.right = V / 2 * aspect; camera.updateProjectionMatrix(); applyShift();
  }
