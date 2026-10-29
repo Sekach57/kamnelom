@@ -273,7 +273,7 @@ export function create(canvas, opts = {}) {
   const w = canvas.clientWidth || 640, h = canvas.clientHeight || 360; if (w === rw && h === rh) return; rw = w; rh = h;
   const k = Math.max(2, Math.round(h / (group ? 300 : 270))); pw = Math.max(2, Math.ceil(w / k)); ph = Math.max(2, Math.ceil(h / k));
   renderer.setSize(pw, ph, false); rt.setSize(pw, ph); post.uniforms.px.value.set(1 / pw, 1 / ph); aspect = w / h;
-  const V = group ? Math.max(9.6, 10.6 / aspect) : Math.max(7.2, 6.2 / aspect); camera.top = V / 2; camera.bottom = -V / 2; camera.left = -V / 2 * aspect; camera.right = V / 2 * aspect; camera.updateProjectionMatrix(); applyShift();
+  const V = group ? Math.max(7.8, 8.6 / aspect) : Math.max(7.2, 6.2 / aspect); camera.top = V / 2; camera.bottom = -V / 2; camera.left = -V / 2 * aspect; camera.right = V / 2 * aspect; camera.updateProjectionMatrix(); applyShift();
  }
  function render(dt) {
   dt = Math.min(dt, .1); now += dt;

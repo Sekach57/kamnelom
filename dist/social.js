@@ -41,7 +41,7 @@ function renderProfile() {
 
 // ---- reps: queued locally, sent in batches with a sequence number so a retry is never counted twice ----
 function socialRep(exercise) {
- repState.pending[exercise] = (repState.pending[exercise] || 0) + 1; store.set('kamnelom.reps', repState); clearTimeout(flushTimer); flushTimer = setTimeout(flush, 3000);
+ repState.pending[exercise] = (repState.pending[exercise] || 0) + 1; store.set('kamnelom.reps', repState); if (!flushTimer) flushTimer = setTimeout(() => { flushTimer = null; flush() }, activeGroup ? 1200 : 3000); // a timer that restarts on every rep never fires while someone keeps training
 }
 async function flush(opts = {}) {
  if (flushing) return; flushing = true;
@@ -59,7 +59,7 @@ async function flush(opts = {}) {
  } catch (e) {
   if (e.status === 401) { account = null; store.set('kamnelom.account', null) }
   else if (e.status && e.status < 500 && e.status !== 429 && repState.inflight) { repState.inflight = null; store.set('kamnelom.reps', repState) } // the server will never accept this batch
-  backoff = Math.min(60000, (backoff || 2500) * 2); clearTimeout(flushTimer); flushTimer = setTimeout(flush, backoff);
+  backoff = Math.min(60000, (backoff || 2500) * 2); clearTimeout(flushTimer); flushTimer = setTimeout(() => { flushTimer = null; flush() }, backoff);
  } finally { flushing = false }
 }
 
@@ -101,10 +101,10 @@ function isMember() { return !!(group && account && group.members.some(m => m.id
 function updateActive() { const b = $('groupActive'), j = $('groupJoin'); if (!group) return; j.hidden = isMember(); b.hidden = !isMember(); b.textContent = activeGroup === group.id ? '✓ Reps go to this crew (turn off)' : 'Train for this crew' }
 function renderGroup() {
  if (!group) return; const pct = Math.min(100, Math.round(group.total / group.goal * 100)), max = Math.max(1, ...group.members.map(m => m.total));
- $('groupProgress').textContent = group.done ? `Boulder smashed! ${group.total} pts` : `${group.total} of ${group.goal} pts · ${pct}%`; $('groupBar').style.width = pct + '%';
+ $('groupProgress').textContent = group.done ? `Boulder smashed! ${group.total} pts` : `${Math.max(0, group.goal - group.total)} pts left · ${group.total} / ${group.goal}`; $('groupBar').style.width = (100 - pct) + '%'; // boulder health left, like in the solo game
  $('groupMembers').innerHTML = group.members.map(m => `<li><span class="who">${esc(m.nick)}</span><span class="bar"><i style="width:${Math.round(m.total / max * 100)}%"></i></span><span class="parts">${Object.keys(EX_NAME).filter(k => m.counts[k]).map(k => EX_ICON[k] + ' ' + m.counts[k]).join(' ')}</span><strong title="points">${m.total}</strong></li>`).join('');
- const hits = [];
- for (const m of group.members) { const prev = scene.counts[m.id] ?? m.total, ex = Object.keys(m.counts).reduce((a, k) => m.counts[k] > (m.counts[a] || 0) ? k : a, 'swing'); if (m.total > prev) { scene.hit[m.id] = { at: performance.now() / 1000, ex }; hits.push({ id: m.id, ex }) } scene.counts[m.id] = m.total }
+ const hits = []; // one blow per new rep, so a batch of reps becomes a short run of blows
+ for (const m of group.members) { const prev = scene.counts[m.id] || { ...m.counts }; for (const ex of Object.keys(m.counts)) { const n = Math.min(6, (m.counts[ex] || 0) - (prev[ex] || 0)); for (let i = 0; i < n; i++) hits.push({ id: m.id, ex, delay: i * .75 }); if (n > 0) scene.hit[m.id] = { at: performance.now() / 1000, ex } } scene.counts[m.id] = { ...m.counts } }
  if (window.stageGroupUpdate) stageGroupUpdate(group, hits);
  updateActive();
 }

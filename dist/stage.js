@@ -49,7 +49,7 @@
   grp.setGnomes(ms.map(m => m.id));
   const frac = g.done ? 0 : 1 - Math.min(1, g.total / g.goal);
   if (frac <= 0) grp.breakRock(); else grp.setHp(Math.max(.05, frac));
-  for (const h of hits || []) grp.hit(h.id, h.ex, 2);
+  for (const h of hits || []) { const run = () => { if (grp && groupObj) grp.hit(h.id, h.ex, 2) }; if (h.delay) setTimeout(run, h.delay * 1000); else run() }
  };
  window.stageGroupClose = () => { groupObj = null; const g = $('gstage'); if (g) g.hidden = true; if ($('tags')) $('tags').innerHTML = '' };
 
