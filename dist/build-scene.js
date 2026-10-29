@@ -177,7 +177,7 @@
   if (S.toast && now() > S.toastUntil) { S.toast = ''; $('buildToast').textContent = '' }
   if (active()) requestAnimationFrame(frame); else S.running = false;
  }
- const active = () => /^#\/build/.test(location.hash) && !document.hidden;
+ const active = () => !canvas.closest('[data-view][hidden]') && !document.hidden; // visible: its section is shown (or it stands alone on a page)
  function start() { if (S.running || !active()) return; S.running = true; S.last = performance.now() / 1000; requestAnimationFrame(frame) }
  window.addEventListener('hashchange', start); document.addEventListener('visibilitychange', start);
 
@@ -194,7 +194,10 @@
  $('buildFacing').onclick = () => { S.facing = S.facing === 'r' ? 'l' : 'r'; refresh() };
  $('buildRep').onclick = rep;
  $('buildAuto').onchange = () => { S.auto = $('buildAuto').checked; S.nextAuto = 0 };
- $('buildReset').onclick = () => { if (!confirm('Убрать всю стройку и все блоки?')) return; S.world = new BuildWorld(); S.landing = {}; S.fly = []; S.fx = []; S.auto = false; $('buildAuto').checked = false; refresh() };
+ let resetArmed = 0; // two taps within 3 s: browsers inside frames may ignore confirm()
+ $('buildReset').onclick = () => {
+  if (now() > resetArmed) { resetArmed = now() + 3; $('buildReset').textContent = 'Точно убрать всё?'; setTimeout(() => { if (now() > resetArmed) $('buildReset').textContent = 'Убрать всё' }, 3100); return }
+  resetArmed = 0; $('buildReset').textContent = 'Убрать всё'; S.world = new BuildWorld(); S.landing = {}; S.fly = []; S.fx = []; S.auto = false; $('buildAuto').checked = false; refresh() };
  $('buildSample').onclick = () => { // a small hut: floor, two walls, a door, stairs and a roof
   const w = S.world, put = (x, y, m, s, f) => w.plan(x, y, m, s, f);
   for (let x = 1; x <= 7; x++) if (x !== 4) put(x, 0, 'stone', 'block'); put(4, 0, 'marble', 'door');
