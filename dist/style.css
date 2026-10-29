@@ -14,7 +14,7 @@ a{color:inherit;text-decoration:none}
 .panel{background:var(--panel)}
 
 /* top bar */
-.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1320px;margin:0 auto;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top));background:var(--bg);border-bottom:var(--px) solid var(--edge)}
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:none;margin:0 auto;padding:10px clamp(16px,2vw,40px);padding-top:calc(10px + env(safe-area-inset-top));background:var(--bg);border-bottom:var(--px) solid var(--edge)}
 .brand{display:flex;align-items:center;gap:10px;font:700 18px var(--head);letter-spacing:.08em}
 .brand .px-ico{color:var(--gold);width:28px;height:28px}
 nav#nav{display:flex;gap:8px}
@@ -22,7 +22,7 @@ nav#nav a{display:flex;align-items:center;gap:8px;padding:8px 12px;font:400 13px
 nav#nav a .px-ico{width:18px;height:18px}
 nav#nav a:hover{color:var(--ink)}
 nav#nav a[aria-current="page"]{background:var(--gold);color:#1a1006;box-shadow:var(--notch),inset 0 calc(-1*var(--px)) 0 0 var(--gold2)}
-main{max-width:1320px;margin:0 auto;padding:12px 16px 28px;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+main{max-width:none;margin:0 auto;padding:12px clamp(16px,2vw,40px) 28px;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
 
 /* buttons */
 .btn,button{font:400 14px var(--head);letter-spacing:.05em;text-transform:uppercase;color:var(--ink);background:var(--panel2);border:0;padding:12px 16px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;-webkit-tap-highlight-color:transparent;box-shadow:var(--notch),inset 0 var(--px) 0 0 var(--hi),inset 0 calc(-1*var(--px)) 0 0 #0007;margin:var(--px)}
@@ -50,7 +50,7 @@ textarea{width:calc(100% - 6px);resize:none;font-size:13px}
 
 /* stage */
 .stagewrap{position:relative}
-.stage{position:relative;isolation:isolate;overflow:hidden;background:#0c0a11;height:clamp(440px,calc(100dvh - 100px),860px);box-shadow:var(--notch)}
+.stage{position:relative;isolation:isolate;overflow:hidden;background:#0c0a11;height:max(440px,calc(100dvh - 100px));box-shadow:var(--notch)}
 .stage canvas,.gstage canvas{image-rendering:pixelated;image-rendering:crisp-edges}
 .stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .hud{position:absolute;inset:0;z-index:2;pointer-events:none}
@@ -114,7 +114,7 @@ body.no3d #world{image-rendering:pixelated;object-fit:cover}
 .pair{background:var(--panel2);padding:12px;margin:12px 3px 3px;box-shadow:var(--notch)}
 
 /* crew */
-.gstage{position:relative;overflow:hidden;height:clamp(380px,62dvh,680px);background:#0c0a11;box-shadow:var(--notch)}
+.gstage{position:relative;overflow:hidden;height:max(380px,calc(100dvh - 330px));background:#0c0a11;box-shadow:var(--notch)}
 .gstage canvas{position:absolute;inset:0;width:100%;height:100%}
 .gwho{position:absolute;left:14px;top:14px;z-index:2;display:flex;flex-direction:column;gap:6px;padding:10px 14px;pointer-events:none;background:var(--panel);box-shadow:var(--notch)}
 .gwho b{font:700 clamp(18px,4vw,26px) var(--head);letter-spacing:.04em;color:var(--gold)}
@@ -142,7 +142,7 @@ details[open] summary{margin-bottom:10px}
 details canvas{display:block;margin:8px 0}
 
 /* ranks */
-.board{max-width:780px;margin:10px auto}
+.board{max-width:900px;margin:10px auto}
 .tabs{display:flex;gap:6px;width:max-content;max-width:100%;margin:0 auto 16px}
 .tabs button{min-width:56px;padding:10px 14px}
 .tabs button .px-ico{width:22px;height:22px}
