@@ -89,6 +89,7 @@ class Gnome {
   this.pos = [0, 0]; this.yaw = 0; this.hmode = 'bone'; this.hshow = null; this.hswitch = -9; this.clock = 0;
   this.hitAt = -10; this.hitDone = true; this.onHit = null; this.dmg = 1;
   this.mixer.addEventListener('finished', e => { if (e.action === this.strikeAct) { this.strikeAct = null; this.ready() } });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(.5 * scale, 20), new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(hash(id + 'c'), .8, .55) })); disc.rotation.x = -Math.PI / 2; disc.position.y = .02; disc.visible = false; this.root.add(disc); this.disc = disc;
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(1.3 * scale, 1.3 * scale), new THREE.MeshBasicMaterial({ map: radial('rgba(0,0,0,.6)', 'rgba(0,0,0,0)'), transparent: true, depthWrite: false }));
   sh.rotation.x = -Math.PI / 2; sh.position.y = .01; this.root.add(sh); this.shadow = sh;
   this.setExercise('swing');
@@ -181,7 +182,7 @@ export function create(canvas, opts = {}) {
  const fill = new THREE.DirectionalLight('#ffcfa0', 1.5); fill.position.set(2, 3, 8); scene.add(fill);
  const glow = new THREE.PointLight('#ff8a3c', 3, 7, 1.6); glow.position.set(0, 1.2, 0); scene.add(glow);
  // diorama: a diamond-shaped stone slab floating in the dark
- const slabW = group ? 9 : 7.4, slab = new THREE.Group(); slab.position.set(group ? 0 : .5, 0, 0); slab.rotation.y = Math.PI / 4; scene.add(slab);
+ const slabW = group ? 10 : 7.4, slab = new THREE.Group(); slab.position.set(group ? 0 : .5, 0, 0); slab.rotation.y = Math.PI / 4; scene.add(slab);
  const top = new THREE.Mesh(new THREE.PlaneGeometry(slabW, slabW), new THREE.MeshStandardMaterial({ map: tileTexture(), roughness: 1 })); top.rotation.x = -Math.PI / 2; slab.add(top);
  const side = new THREE.MeshStandardMaterial({ map: strataTexture(), roughness: 1, flatShading: true }), depth = 1.3;
  const body = new THREE.Mesh(new THREE.BoxGeometry(slabW, depth, slabW), [side, side, new THREE.MeshBasicMaterial({ visible: false }), side, side, side]); body.position.y = -depth / 2 - .005; slab.add(body);
@@ -220,14 +221,14 @@ export function create(canvas, opts = {}) {
  function layout() {
   const list = [...gnomes.values()], n = list.length;
   list.forEach((g, i) => {
-   if (group) { const a = (i / Math.max(1, n)) * Math.PI * 2, r = 2.1 + (n > 8 ? .5 : 0); g.root.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); g.root.rotation.y = -a - Math.PI / 2 }
+   if (group) { const a = (i / Math.max(1, n)) * Math.PI * 2, r = 2.5 + (n > 8 ? .6 : 0); g.root.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); g.root.rotation.y = -a - Math.PI / 2 }
    else { g.root.position.set(-.5, 0, -.5); g.root.rotation.y = Math.PI / 3 }
   });
  }
  function setGnomes(ids) {
   const want = new Set(ids);
   for (const [id, g] of gnomes) if (!want.has(id)) { scene.remove(g.root); gnomes.delete(id) }
-  for (const id of ids) if (!gnomes.has(id)) { const g = new Gnome(assets.gnome, id, group ? .95 : 1.6); g.instant = group; g.onHit = hitLanded; gnomes.set(id, g); scene.add(g.root) }
+  for (const id of ids) if (!gnomes.has(id)) { const g = new Gnome(assets.gnome, id, group ? 1.3 : 1.6); g.instant = group; g.disc.visible = group; g.onHit = hitLanded; gnomes.set(id, g); scene.add(g.root) }
   layout();
  }
  const waves = [], waveMat = new THREE.MeshBasicMaterial({ color: '#ffb067', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
@@ -273,7 +274,7 @@ export function create(canvas, opts = {}) {
   const w = canvas.clientWidth || 640, h = canvas.clientHeight || 360; if (w === rw && h === rh) return; rw = w; rh = h;
   const k = Math.max(2, Math.round(h / (group ? 300 : 270))); pw = Math.max(2, Math.ceil(w / k)); ph = Math.max(2, Math.ceil(h / k));
   renderer.setSize(pw, ph, false); rt.setSize(pw, ph); post.uniforms.px.value.set(1 / pw, 1 / ph); aspect = w / h;
-  const V = group ? Math.max(7.8, 8.6 / aspect) : Math.max(7.2, 6.2 / aspect); camera.top = V / 2; camera.bottom = -V / 2; camera.left = -V / 2 * aspect; camera.right = V / 2 * aspect; camera.updateProjectionMatrix(); applyShift();
+  const V = group ? Math.max(7.4, 8.2 / aspect) : Math.max(7.2, 6.2 / aspect); camera.top = V / 2; camera.bottom = -V / 2; camera.left = -V / 2 * aspect; camera.right = V / 2 * aspect; camera.updateProjectionMatrix(); applyShift();
  }
  function render(dt) {
   dt = Math.min(dt, .1); now += dt;
@@ -299,7 +300,7 @@ export function create(canvas, opts = {}) {
  function project(id) { const g = gnomes.get(id); if (!g) return null; const v = new THREE.Vector3(g.root.position.x, 1.75 * g.model.scale.x / 1.25, g.root.position.z).project(camera); return { x: (v.x + 1) / 2 * canvas.clientWidth, y: (1 - v.y) / 2 * canvas.clientHeight, behind: v.z > 1 } }
  function dispose() { renderer.dispose(); renderer.forceContextLoss?.() }
  resize();
- return { opts, setShift, setGnomes, setExercise, project, hit, setHp, breakRock, render, resize, dispose, gnomes, camera, THREE };
+ return { isBroken: () => broken, opts, setShift, setGnomes, setExercise, project, hit, setHp, breakRock, render, resize, dispose, gnomes, camera, THREE };
 }
 
 // Head-and-shoulders portrait of a player's dwarf (one shared offscreen renderer, cached per tint).
