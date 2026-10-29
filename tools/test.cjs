@@ -2,7 +2,7 @@
 const {spawnSync}=require('node:child_process'),path=require('node:path');
 const root=path.resolve(__dirname,'..'),rowing=process.argv.includes('--rowing');
 const cwd=rowing?path.join(root,'reference','strumok'):root;
-const tests=rowing?['detector']:['pose','calibration','game','onboarding','replay','remote','exercises','exercise_app'];
+const tests=rowing?['detector']:['build','pose','calibration','game','onboarding','replay','remote','exercises','exercise_app'];
 for(const name of tests){const r=spawnSync(process.execPath,[`tests/${name}.cjs`],{cwd,stdio:'inherit'});if(r.error)throw r.error;if(r.status!==0)process.exit(r.status||1)}
 // Server and client+server tests need node:sqlite (Node 22.13+); older Node only checks the game itself.
 const [major,minor]=process.versions.node.split('.').map(Number);

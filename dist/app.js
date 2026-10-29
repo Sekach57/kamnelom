@@ -33,7 +33,7 @@ $('checkSwing').textContent=state==='positioning'?'Я готов, три про�
 function startCameraGame(){if(!stream||!detector.params){calibration.set('error');return}mode='camera';paused=false;detector.startPlay();sync();lock();say('Три пробных повтора распознаны. Игра началась! Пробные повторы не учитываются.');$('pause').focus({preventScroll:true});$('arena').scrollIntoView({behavior:'smooth',block:'start'});}
 function stopCamera(){requestGeneration++;stopFrames();clearOverlay();showHint('');if(stream)stream.getTracks().forEach(t=>{t.onended=null;t.onmute=null;t.stop()});stream=null;document.body.classList.remove('camera-active');$('video').srcObject=null;$('placeholder').style.display='flex';$('sensorDot').textContent='● ВЫКЛ';detector.stop();calibration.cancel();}
 // --- sections (hash routes #/play, #/party, #/board, #/me) ---
-const VIEWS=['play','party','board','me'];let currentView='play';
+const VIEWS=['play','build','party','board','me'];let currentView='play';
 function showView(name){if(!VIEWS.includes(name))name='play';currentView=name;for(const v of document.querySelectorAll?.('[data-view]')||[])v.hidden=v.dataset.view!==name;for(const a of document.querySelectorAll?.('[data-nav]')||[]){if(a.dataset.nav===name)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')}if(typeof onView==='function')onView(name)}
 function goView(name){try{history.replaceState(null,'',location.pathname+location.search+'#/'+name)}catch{}showView(name)}
 function routeFromHash(){const m=/^#\/(\w+)$/.exec(location.hash);if(m)showView(m[1]);else if(!location.hash)showView(currentView)}
