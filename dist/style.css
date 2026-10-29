@@ -212,3 +212,5 @@ details canvas{display:block;margin:8px 0}
 @media(max-width:820px){#bstage{height:min(480px,calc(100dvh - 120px))}}
 #buildWorld3d{touch-action:pan-y;cursor:grab}
 .choices.three .pick{min-width:0}
+.choices.two{grid-template-columns:repeat(2,1fr)}
+body.build-live .bhud .tools{margin-right:118px}

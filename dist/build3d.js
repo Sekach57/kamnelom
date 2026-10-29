@@ -3,7 +3,8 @@
 // The plot is a real 3D grid (width x depth x height): you can walk the camera all the way round it, draw ghosts on the floor or on
 // any face of a block, and watch it grow. It runs on the quarry's own engine and dwarf (scene3d.js) with a calmer picture
 // (finer pixels, many colours, almost no dither) so blocks stay readable. Game state lives in build.js (BuildWorld); this file is view and controls.
-// Repetitions come from buttons for now: the camera and the pose detectors are not connected to this screen yet.
+// Repetitions come from the camera when a session starts from the Play menu with the goal BUILD (app.js calls buildCameraRep for every counted rep;
+// calibration reps never reach it), or from the demo buttons otherwise. The world is saved on this device (localStorage), nothing is sent anywhere.
 (() => {
  const $ = id => document.getElementById(id), canvas = $('buildWorld3d');
  if (!canvas || typeof BuildWorld === 'undefined') return;
@@ -30,7 +31,10 @@
  const HANDS = 1.15; // how far in front of the lying dwarf the block he pushes rests
  const DIRS = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] }, FACE_NAME = { n: 'NORTH', e: 'EAST', s: 'SOUTH', w: 'WEST' };
 
- const state = { world: new BuildWorld(), job: 'dig', material: 'stone', shape: 'block', facing: 's', tool: 'draw', auto: false, nextAuto: 0, lastRep: -9, hover: null, toastUntil: 0,
+ const SAVE_KEY = 'dwarfgym.build';
+ function loadWorld() { try { const raw = localStorage.getItem(SAVE_KEY); return raw ? BuildWorld.from(JSON.parse(raw)) : new BuildWorld() } catch { return new BuildWorld() } }
+ function saveWorld() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(state.world)) } catch { } }
+ const state = { world: loadWorld(), live: false, job: 'dig', material: 'stone', shape: 'block', facing: 's', tool: 'draw', auto: false, nextAuto: 0, lastRep: -9, hover: null, toastUntil: 0,
   az: -.5, azT: -.5, el: .62, zoom: 1 };
  const pending = { swing: [], pushup: [], squat: [] }; // outcomes of counted reps, shown when the blow lands
  const fliers = []; // blocks in the air: { obj, from, to, t0, dur, land }
@@ -149,8 +153,8 @@
  }
 
  // ---- one counted repetition ----
- function rep(t = now()) {
-  if (!api || t - state.lastRep < MIN_GAP) return false;
+ function rep(t = now(), force = false) {
+  if (!api || (!force && t - state.lastRep < MIN_GAP)) return false; // camera reps are already spaced by the detector
   const w = state.world, ev = w.rep(state.job, state.material);
   if (ev.type === 'blocked') { toast(ev.reason); state.auto = false; refreshUi(); return false }
   state.lastRep = t; const ex = EX[state.job]; pending[ex].push({ ev });
@@ -187,7 +191,7 @@
   $('bBar').style.width = (need ? Math.round(done / need * 100) : 0) + '%';
   $('bMount').textContent = w.total(w.mountain) + (w.carrying ? ' +1' : ''); $('bSite').textContent = w.total(w.site);
   $('bDug').textContent = w.reps.dig; $('bHauled').textContent = w.reps.haul; $('bBuilt').textContent = w.reps.place;
-  $('bAuto').setAttribute('aria-pressed', String(state.auto));
+  $('bAuto').setAttribute('aria-pressed', String(state.auto)); saveWorld();
  }
  const mats = $('bMaterials');
  for (const m of MATS) {
@@ -271,7 +275,7 @@
   if (!drag?.moved) state.az += (state.azT - state.az) * (1 - Math.exp(-dt * 9));
   const v = api.opts.view, asp = canvas.clientWidth / Math.max(1, canvas.clientHeight); // everything fits at any shape of screen
   api.opts.az = state.az; api.opts.elev = state.el; v.zoom = Math.min(1.1, Math.max(7.2, 6.2 / asp) * asp / 14.5) * state.zoom; v.y = asp < 1 ? .5 : .9;
-  putCarry(); syncPreview();
+  putCarry(); syncPreview(); if (state.live) $('bPause').textContent = $('pause').getAttribute('aria-pressed') === 'true' ? 'RESUME' : 'PAUSE';
   if (!fliers.length && !pending.swing.length && !pending.pushup.length && !pending.squat.length) { let drift = false; for (const m of MATS) if (vis.mountain[m] !== state.world.mountain[m] || vis.site[m] !== state.world.site[m]) drift = true; if (drift && !state.world.building && !state.world.carrying) resync() }
   if (state.auto && t >= state.nextAuto && t - state.lastRep >= MIN_GAP) {
    if (!state.world.ghosts().length && !state.world.building) { state.auto = false; toast('Nothing to do: draw a blueprint first.'); refreshUi() }
@@ -301,11 +305,33 @@
    for (let j = 0; j <= G.d; j++) pts.push(0, .02, j * C, G.w * C, .02, j * C);
    grid.geometry.setAttribute('position', new T.Float32BufferAttribute(pts, 3)); grid.raycast = () => { }; site.add(grid);
    const rim = new T.Mesh(geo(G.w * C + .16, .06, G.d * C + .16), new T.MeshStandardMaterial({ color: '#2a2233', roughness: 1 })); rim.position.set(G.w * C / 2, -.02, G.d * C / 2); rim.raycast = () => { }; site.add(rim);
-   resync(); syncCells(); refreshUi(); return true;
+   resync(); syncCells(); if (state.world.carrying) { setCarry(state.world.carrying); putCarry() } refreshUi(); return true;
   } catch (e) { failed = true; console.error('build scene failed', e); toast('3D view unavailable: ' + e.message); return true }
  }
- function start() { if (running || !visible()) return; if (!boot()) { setTimeout(start, 250); return } if (failed) return; running = true; last = performance.now() / 1000; requestAnimationFrame(frame) }
- window.addEventListener('hashchange', () => setTimeout(start, 0)); document.addEventListener('visibilitychange', start); window.addEventListener('stage-ready', start);
+ // When the screen comes back after being hidden, blows that never landed (the dwarf only moves while it is shown) are dropped and the picture is rebuilt from the world.
+ function flushStale() { for (const k in pending) pending[k].length = 0; landing.clear(); for (const f of fliers.splice(0)) api.scene.remove(f.obj); resync(); syncCells(); setCarry(state.world.carrying); putCarry() }
+ function start() { if (running || !visible()) return; if (!boot()) { setTimeout(start, 250); return } if (failed) return; flushStale(); running = true; last = performance.now() / 1000; requestAnimationFrame(frame) }
+ window.addEventListener('hashchange', () => setTimeout(start, 0)); window.addEventListener('viewchange', () => setTimeout(start, 0)); document.addEventListener('visibilitychange', start); window.addEventListener('stage-ready', start);
  window.buildDebug = () => ({ state, vis, pending, api, P, cellAt, syncCells, resync }); // for tests and diagnostics
+ // ---- called by app.js ----
+ const JOB_FOR = { swing: 'dig', pushup: 'haul', squat: 'place' };
+ // Every real rep of a camera session with the goal BUILD. The exercise decides the job; a job that cannot run (nothing to haul) says why and the rep still counts for points.
+ window.buildCameraRep = ex => {
+  const job = JOB_FOR[ex]; if (!job) return;
+  if (state.job !== job) setJob(job);
+  if (api) { rep(now(), true); return }
+  const ev = state.world.rep(job, state.material); if (ev.type === 'blocked') toast(ev.reason); refreshUi(); // the 3D view is not up yet: the rep still counts in the world
+ };
+ // The session starts and ends. While live the exercise picks the job, and pause and exit replace the demo buttons.
+ window.buildLive = (on, ex) => {
+  const was = state.live; state.live = !!on; document.body.classList.toggle('build-live', state.live);
+  for (const b of document.querySelectorAll('[data-job]')) b.disabled = state.live;
+  for (const id of ['bRep', 'bAuto']) $(id).hidden = state.live;
+  for (const id of ['bPause', 'bExit']) $(id).hidden = !state.live;
+  if (state.live) { state.auto = false; if (ex && JOB_FOR[ex]) setJob(JOB_FOR[ex]); toast('Camera on: swings dig, push-ups haul, squats build.') }
+  else if (was && typeof goView === 'function') goView('play');
+  refreshUi();
+ };
+ $('bPause').onclick = () => $('pause').click(); $('bExit').onclick = () => $('reset').click();
  refreshUi(); start();
 })();
