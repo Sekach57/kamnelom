@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/three/GLTFLoader.js';
 import { clone as cloneRig } from './vendor/three/SkeletonUtils.js';
+import { MeshoptDecoder } from './vendor/three/meshopt_decoder.module.js'; // lets the loader read Meshopt-compressed .glb (docs/BLENDER_PIPELINE.md, phase 6); plain files load as before
 
 // 3D quarry scene: gnomes (rigged GLB) hit a boulder (GLB). Two cameras: "solo" (three-quarter view)
 // and "group" (looking down on a ring of gnomes around one boulder). Animation: keyframed clips, see CLIPS below.
@@ -12,7 +13,7 @@ const TINTS = ['#ffffff', '#ffd2b8', '#bcd0ff', '#cdeec0', '#ffe49a', '#e2c4ff',
 let assets = null;
 function loadAssets() {
  return assets || (assets = (async () => {
-  const loader = new GLTFLoader(), get = u => new Promise((ok, bad) => loader.load(u, ok, undefined, bad));
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder), get = u => new Promise((ok, bad) => loader.load(u, ok, undefined, bad));
   const [g, b, h, m] = await Promise.all([get('assets/dwarf.glb'), get('assets/boulder.glb'), get('assets/hammer.glb'), get('assets/dwarf_moves.glb')]);
   g.animations = [...g.animations, ...m.animations]; // same bone names, so the clips bind to the dwarf by name
   return { gnome: g, boulder: b, hammer: h };
