@@ -22,22 +22,22 @@ assert.equal(new BuildWorld().rep('dig', 'gold').type, 'blocked', 'unknown mater
 
 // Hauling needs a block at the mountain; the block is in the gnome's hands until the fifth push-up.
 let w = new BuildWorld();
-assert.equal(w.why('haul'), 'Нечего тащить: сначала покопай.'); assert.equal(w.rep('haul').type, 'blocked'); assert.equal(w.reps.haul, 0, 'a blocked rep is not counted');
+assert.equal(w.why('haul'), 'Nothing to haul: dig first.'); assert.equal(w.rep('haul').type, 'blocked'); assert.equal(w.reps.haul, 0, 'a blocked rep is not counted');
 reps(w, 'dig', 10, 'stone');
 let e = reps(w, 'haul', 4); assert.equal(e.done, false); assert.equal(w.mountain.stone, 0, 'taken from the pile when the carry starts'); assert.equal(w.site.stone, 0); assert.equal(w.carrying, 'stone');
 e = w.rep('haul'); assert.equal(e.done, true); assert.equal(w.site.stone, 1); assert.equal(w.carrying, null); assert.equal(w.reps.haul, 5);
 
 // Placing needs a plan and blocks at the site; a block costs 20 squats.
-w = new BuildWorld(); assert.match(w.why('place'), /чертежа/);
-assert.deepEqual(w.plan(2, 0, 'stone', 'block'), { ok: true }); assert.match(w.why('place'), /Камень/, 'tells what is missing');
+w = new BuildWorld(); assert.match(w.why('place'), /blueprint/);
+assert.deepEqual(w.plan(2, 0, 'stone', 'block'), { ok: true }); assert.match(w.why('place'), /Stone/, 'tells what is missing');
 w.site.stone = 1; assert.equal(w.why('place'), null);
 e = reps(w, 'place', 19); assert.equal(e.done, false); assert.equal(w.site.stone, 0); assert.equal(w.cells['2,0'].built, false);
 e = w.rep('place'); assert.equal(e.done, true); assert.equal(w.cells['2,0'].built, true); assert.equal(w.building, null);
-assert.match(w.why('place'), /чертежа/, 'nothing left to build');
+assert.match(w.why('place'), /blueprint/, 'nothing left to build');
 
 // A door is two blocks and 40 squats; stairs are one block.
 w = new BuildWorld(); w.plan(5, 0, 'marble', 'door'); w.site.marble = 1;
-assert.match(w.why('place'), /Мрамор/, 'one block is not enough for a door'); w.site.marble = 2;
+assert.match(w.why('place'), /Marble/, 'one block is not enough for a door'); w.site.marble = 2;
 reps(w, 'place', 39); assert.equal(w.cells['5,0'].built, false); assert.equal(w.site.marble, 0); assert.equal(w.rep('place').done, true);
 w = new BuildWorld(); w.plan(1, 0, 'brick', 'stairs', 'l'); assert.equal(w.cells['1,0'].facing, 'l'); w.site.brick = 1; reps(w, 'place', 20); assert.equal(w.cells['1,0'].built, true);
 

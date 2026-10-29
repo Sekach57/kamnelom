@@ -79,7 +79,7 @@ function drawGnome(c, look = GNOME_DEFAULT, pose = {}) {
 // Game balance: damage to the boulder per rep (boulder HP is 20). Squats are the easiest, push-ups the hardest.
 const EXERCISE_WEIGHT = { squat: 1, swing: 2, pushup: 3 };
 // Seconds from the start of a rep to the hit: heavier exercises wind up longer. `wind` is the end of the wind-up, `hit` the moment of impact.
-const GNOME_TIMING = { squat: { wind: .16, hit: .25 }, swing: { wind: .2, hit: .29 }, pushup: { wind: .28, hit: .37 } };
+const GNOME_TIMING = { squat: { wind: .3, hit: .65 }, swing: { wind: .25, hit: .5 }, pushup: { wind: .3, hit: .6 } };
 // Wind-up amount 0..1 for a hit that started `phase` seconds ago: eases back, snaps forward at the hit, then rests.
 function gnomeBack(phase, t = GNOME_TIMING.swing) { if (phase < 0 || phase >= t.hit + .36) return 0; if (phase < t.wind) { const k = phase / t.wind; return k * k * (3 - 2 * k) } return phase < t.hit ? 1 - (phase - t.wind) / (t.hit - t.wind) : 0 }
 // Pose for an exercise: swing = hammer, squat = log pushed with the legs, pushup = both hands on the rock.

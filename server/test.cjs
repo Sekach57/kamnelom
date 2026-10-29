@@ -7,7 +7,7 @@ const assert = require('node:assert'), { createApp } = require('./app.js');
 
  // identity
  const a = await call('POST', '/api/players', { body: { nick: '  Торин <b>Дубощит</b> ' } }); assert.equal(a.status, 200); assert(/^p-[a-z0-9]{8}$/.test(a.json.id)); assert.equal(a.json.nick, 'Торин bДубощит/b', 'angle brackets and padding stripped');
- const b = await call('POST', '/api/players', { body: {} }); const mine = await call('POST', '/api/players', { body: { id: 'p-abcd1234' } }); assert.equal(mine.json.id, 'p-abcd1234', 'a client may bring its own id (keeps its gnome)'); assert.notEqual((await call('POST', '/api/players', { body: { id: 'p-abcd1234' } })).json.id, 'p-abcd1234', 'a taken id is never reused'); assert(/^Гном-/.test(b.json.nick), 'default nick');
+ const b = await call('POST', '/api/players', { body: {} }); const mine = await call('POST', '/api/players', { body: { id: 'p-abcd1234' } }); assert.equal(mine.json.id, 'p-abcd1234', 'a client may bring its own id (keeps its gnome)'); assert.notEqual((await call('POST', '/api/players', { body: { id: 'p-abcd1234' } })).json.id, 'p-abcd1234', 'a taken id is never reused'); assert(/^Dwarf-/.test(b.json.nick), 'default nick');
  assert.equal((await call('GET', '/api/me')).status, 401); assert.equal((await call('GET', '/api/me', { token: a.json.id + '.wrongsecretwrongsecretwrong' })).status, 401);
  const me = await call('GET', '/api/me', { token: a.json.token }); assert.equal(me.status, 200); assert.equal(me.json.stats.swing.reps, 0);
  assert.equal((await call('POST', '/api/login', { body: { id: a.json.id, secret: a.json.secret } })).json.id, a.json.id, 'login with id+secret'); assert.equal((await call('POST', '/api/login', { body: { id: a.json.id, secret: 'x'.repeat(30) } })).status, 401);
@@ -48,7 +48,7 @@ const assert = require('node:assert'), { createApp } = require('./app.js');
  let limited = 0; for (let i = 0; i < 25; i++) if ((await call('POST', '/api/players', { body: {} })).status === 429) limited++; assert(limited > 0, 'player creation is rate limited');
  // static site from dist/ on the same origin
  const site = createApp({ staticDir: require('node:path').join(__dirname, '../dist') }); await new Promise(r => site.server.listen(0, '127.0.0.1', r)); const sb = 'http://127.0.0.1:' + site.server.address().port;
- let f = await fetch(sb + '/'); assert.equal(f.status, 200); assert(f.headers.get('content-type').startsWith('text/html')); assert((await f.text()).includes('Камнелом'));
+ let f = await fetch(sb + '/'); assert.equal(f.status, 200); assert(f.headers.get('content-type').startsWith('text/html')); assert((await f.text()).includes('Dwarf Gym'));
  f = await fetch(sb + '/vendor/mediapipe/wasm/vision_wasm_internal.wasm', { method: 'HEAD' }); assert.equal(f.headers.get('content-type'), 'application/wasm'); f = await fetch(sb + '/vendor/mediapipe/vision_bundle.mjs', { method: 'HEAD' }); assert(f.headers.get('content-type').startsWith('text/javascript'));
  for (const bad of ['/../server/app.js', '/%2e%2e/server/app.js', '/..%2fserver%2fapp.js', '/nope.txt']) { f = await fetch(sb + bad); assert([400, 404].includes(f.status), bad + ' -> ' + f.status) }
  f = await fetch(sb + '/api/nothing'); assert.equal(f.status, 404); assert.equal((await fetch(sb + '/health')).status, 200); assert.equal((await fetch(sb + '/health', { method: 'HEAD' })).status, 200, 'HEAD works for health checks'); await site.close();

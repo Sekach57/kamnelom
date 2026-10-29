@@ -26,20 +26,20 @@ const tick = (ms = 0) => new Promise(r => setTimeout(r, ms));
  a.run("mode='demo'"); a.run(`swing(${a.time += 1000})`); a.run('impact()'); assert.equal(a.run('repState.pending.squat'), 0);
 
  // 3. leaderboard shows the player with the stage
- await a.run("$('nick').value='Бальдур';$('nickSave').onclick()"); await settle(a); await a.run("loadBoard('squat')"); const html = a.el('boardList').innerHTML; assert(html.includes('Бальдур') && html.includes('валун №1') && html.includes('12/20'), html);
+ await a.run("$('nick').value='Бальдур';$('nickSave').onclick()"); await settle(a); await a.run("loadBoard('squat')"); const html = a.el('boardList').innerHTML; assert(html.includes('Бальдур') && html.includes('boulder #1') && html.includes('12/20'), html);
  await a.run("loadBoard('total')"); assert(a.el('boardList').innerHTML.includes('⚒ 0') && a.el('boardList').innerHTML.includes('⇩ 8'), 'total tab shows each exercise');
 
  // 4. sign in on another device with the link: same id, same gnome
  const link = a.el('loginLink').value; assert(/#login=p-[a-z0-9]{8}\.[A-Za-z0-9_-]+$/.test(link)); const b = client(); b.sandbox.location.hash = ''; await settle(b);
  const idB0 = b.run('profile.id'); assert.notEqual(idB0, idA); await b.run(`loginFromLink(${JSON.stringify(link.split('#login=')[1].split('.')[0])}, ${JSON.stringify(link.split('.').slice(1).join('.'))})`); await settle(b);
- assert.equal(b.run('profile.id'), idA, 'the second device became the same player'); assert.equal(JSON.stringify(b.run('myLook')), JSON.stringify(a.run('myLook')), 'and shows the same gnome'); assert.equal(b.store['kamnelom.player'], idA); assert(b.el('meStats').textContent.includes('Приседания: 8'));
+ assert.equal(b.run('profile.id'), idA, 'the second device became the same player'); assert.equal(JSON.stringify(b.run('myLook')), JSON.stringify(a.run('myLook')), 'and shows the same gnome'); assert.equal(b.store['kamnelom.player'], idA); assert(b.el('meStats').textContent.includes('Squats: 8'));
 
  // 5. group challenge with a live stream
  await a.run("$('groupName').value='Башня друзей';$('groupGoal').value='200';createGroup()"); await settle(a); const gid = a.run('group.id'); assert(/^g-[a-z0-9]{8}$/.test(gid)); assert(a.el('groupInvite').value.endsWith('#group=' + gid)); assert.equal(a.run('isMember()'), true);
  const c = client(); await settle(c); await c.run(`openGroup(${JSON.stringify(gid)})`); await settle(c); assert.equal(c.run('group.name'), 'Башня друзей'); assert.equal(c.run('isMember()'), false); assert.equal(c.el('groupJoin').hidden, false);
  await c.run('joinGroup()'); await settle(c); assert.equal(c.run('isMember()'), true); await settle(a); assert.equal(a.run('group.members.length'), 2, 'the first member sees the newcomer live');
  await c.run('toggleActive()'); assert.equal(c.run('activeGroup'), gid); c.run("mode='camera';paused=false;exercise='pushup'"); for (let i = 0; i < 4; i++) rep(c); now += 30_000; await c.run('flush()'); await settle(a);
- assert.equal(a.run('group.total'), 12, '4 push-ups = 12 points flow into the group and reach the other member through the stream'); assert.equal(a.run("group.members.find(m => m.nick !== 'Бальдур').counts.pushup"), 4); assert(a.el('groupProgress').textContent.includes('12 из 200'));
+ assert.equal(a.run('group.total'), 12, '4 push-ups = 12 points flow into the group and reach the other member through the stream'); assert.equal(a.run("group.members.find(m => m.nick !== 'Бальдур').counts.pushup"), 4); assert(a.el('groupProgress').textContent.includes('188 pts left'));
  a.run('sceneTick()'); c.run('sceneTick()'); a.run('closeGroup()'); assert.equal(a.el('groupPanel').hidden, true);
  // sign-in failure does not break the page
  const d = client(); await settle(d); await d.run("loginFromLink('p-zzzzzzzz','x'.repeat(30))").catch(() => { }); assert.equal(d.run('account.id'), d.run('profile.id'));

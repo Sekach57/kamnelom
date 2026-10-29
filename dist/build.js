@@ -5,17 +5,17 @@
 const BUILD_GRID = { w: 14, h: 10 };
 // dig = swings needed to dig one block (hardness). Hauling and placing do not depend on the material.
 const BUILD_MATERIALS = {
- rubble: { name: 'Щебень', dig: 4 }, sandstone: { name: 'Песчаник', dig: 6 }, brick: { name: 'Кирпич', dig: 8 },
- stone: { name: 'Камень', dig: 10 }, marble: { name: 'Мрамор', dig: 16 }, obsidian: { name: 'Обсидиан', dig: 25 }
+ rubble: { name: 'Rubble', dig: 4 }, sandstone: { name: 'Sandstone', dig: 6 }, brick: { name: 'Brick', dig: 8 },
+ stone: { name: 'Stone', dig: 10 }, marble: { name: 'Marble', dig: 16 }, obsidian: { name: 'Obsidian', dig: 25 }
 };
 const BUILD_SHAPES = {
- block: { name: 'Блок', blocks: 1, h: 1 }, stairs: { name: 'Ступени', blocks: 1, h: 1 }, door: { name: 'Дверь', blocks: 2, h: 2 }
+ block: { name: 'Block', blocks: 1, h: 1 }, stairs: { name: 'Stairs', blocks: 1, h: 1 }, door: { name: 'Door', blocks: 2, h: 2 }
 };
 // Each job is bound to one exercise. haul: reps per block; place: reps per block of the shape.
 const BUILD_JOBS = {
- dig: { name: 'Копать', exercise: 'swing' },
- haul: { name: 'Тащить', exercise: 'pushup', reps: 5 },
- place: { name: 'Строить', exercise: 'squat', repsPerBlock: 20 }
+ dig: { name: 'Dig', exercise: 'swing' },
+ haul: { name: 'Haul', exercise: 'pushup', reps: 5 },
+ place: { name: 'Build', exercise: 'squat', repsPerBlock: 20 }
 };
 const BUILD_VERSION = 1;
 const buildKey = (x, y) => x + ',' + y;
@@ -40,18 +40,18 @@ class BuildWorld {
  // Draw a ghost. Overlapping ghosts are replaced; a built cell must be taken apart first.
  plan(x, y, material, shape, facing = 'r') {
   const s = BUILD_SHAPES[shape];
-  if (!BUILD_MATERIALS[material]) return buildFail('Неизвестный материал.');
-  if (!s) return buildFail('Неизвестная форма.');
-  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || x >= BUILD_GRID.w || y < 0 || y + s.h > BUILD_GRID.h) return buildFail('Тут нельзя строить.');
+  if (!BUILD_MATERIALS[material]) return buildFail('Unknown material.');
+  if (!s) return buildFail('Unknown shape.');
+  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || x >= BUILD_GRID.w || y < 0 || y + s.h > BUILD_GRID.h) return buildFail('Cannot build here.');
   const hit = new Set(); for (let i = 0; i < s.h; i++) { const c = this.occupant(x, y + i); if (c) hit.add(c) }
-  for (const c of hit) if (c.built) return buildFail('Клетка занята: сначала разбери.');
+  for (const c of hit) if (c.built) return buildFail('Cell taken: take it apart first.');
   for (const c of hit) this.drop(c);
   this.cells[buildKey(x, y)] = { x, y, material, shape, facing: facing === 'l' ? 'l' : 'r', built: false };
   return { ok: true };
  }
  // Remove a ghost, or take a built piece apart: its blocks go back to the site pile, no exercise needed.
  erase(x, y) {
-  const c = this.occupant(x, y); if (!c) return buildFail('Тут пусто.');
+  const c = this.occupant(x, y); if (!c) return buildFail('Nothing here.');
   const built = c.built; this.drop(c);
   if (built) this.site[c.material] += BUILD_SHAPES[c.shape].blocks;
   return { ok: true, removed: built ? 'built' : 'plan', material: c.material, shape: c.shape };
@@ -85,20 +85,20 @@ class BuildWorld {
  // null when the job can be done, otherwise a short reason for the player.
  why(job) {
   if (job === 'dig') return null;
-  if (job === 'haul') return this.carrying || this.total(this.mountain) > 0 ? null : 'Нечего тащить: сначала покопай.';
+  if (job === 'haul') return this.carrying || this.total(this.mountain) > 0 ? null : 'Nothing to haul: dig first.';
   if (job === 'place') {
    if (this.building) return null;
-   const g = this.ghosts(); if (!g.length) return 'Нет чертежа: нарисуй, что строить.';
+   const g = this.ghosts(); if (!g.length) return 'No blueprint: draw what to build.';
    if (this.target()) return null;
    const need = [...new Set(g.filter(c => !this.affordable(c)).map(c => BUILD_MATERIALS[c.material].name))];
-   return 'Не хватает блоков на стройке (' + need.join(', ') + '). Копай и тащи.';
+   return 'Not enough blocks at the site (' + need.join(', ') + '). Dig and haul.';
   }
-  return 'Неизвестное занятие.';
+  return 'Unknown job.';
  }
  // One counted repetition. Returns an event: { type: 'dig'|'haul'|'place', done, progress, need, ... } or { type: 'blocked', reason }.
  rep(job, material) {
   if (job === 'dig') {
-   if (!BUILD_MATERIALS[material]) return { type: 'blocked', job, reason: 'Выбери материал.' };
+   if (!BUILD_MATERIALS[material]) return { type: 'blocked', job, reason: 'Pick a material.' };
    const need = BUILD_MATERIALS[material].dig, p = ++this.digProgress[material]; this.reps.dig++;
    if (p < need) return { type: 'dig', material, done: false, progress: p, need };
    this.digProgress[material] = 0; this.mountain[material]++;

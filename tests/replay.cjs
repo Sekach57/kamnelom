@@ -11,6 +11,6 @@ const harness = require('./harness.cjs'), { skeleton, wave, TOP } = require('./s
  assert(!/data:image|base64/.test(json), 'recording holds numbers only'); assert.equal(data.frames[5].p.length, 8);
  const live = run('count'), file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kamnelom-')), 'rec.json'); fs.writeFileSync(file, json);
  const out = spawnSync(process.execPath, ['tools/replay.cjs', file], { encoding: 'utf8' }).stdout;
- assert(out.includes('Свингов после калибровки: ' + live), 'replay matches the live count ' + live + '\n' + out); assert(live >= 3);
+ assert(out.includes('Swings after calibration: ' + live), 'replay matches the live count ' + live + '\n' + out); assert(live >= 3);
  console.log('PASS: numbers-only recording exports frames/events; offline replay reproduces the live count.');
 })().catch(e => { console.error(e); process.exitCode = 1 });
