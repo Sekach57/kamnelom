@@ -72,7 +72,8 @@ function basisQuat(yAxis, xHint) { // orientation of the hammer: bone +Y = butt 
 }
 
 class Gnome {
- constructor(src, id, scale = 1) {
+ constructor(src, id, scale = 1, cfg = {}) {
+  this.spots = cfg.spots || SPOT; this.yawFor = cfg.yawFor || null; // optional: where he stands for each exercise (model units) and which way he faces there
   this.id = id; this.root = new THREE.Group(); this.look = lookFor(id); this.model = cloneRig(src.scene); this.S = scale;
   this.model.scale.set(scale * this.look.w, scale * this.look.h, scale * this.look.w); this.root.add(this.model);
   const tint = new THREE.Color(TINTS[this.look.tint]), bones = {};
@@ -104,7 +105,7 @@ class Gnome {
  setHammer(mode) { if (mode !== this.hmode) { this.hmode = mode; this.hswitch = this.clock } }
  ready() {
   const a = this.act(CLIPS[this.stance].ready); a.reset(); a.setLoop(THREE.LoopRepeat, Infinity); a.timeScale = 1; a.paused = false; this.go(a, .3);
-  this.setHammer(this.stance === 'swing' ? 'bone' : 'floor'); this.pos = SPOT[this.stance].slice(); this.moveTo = null;
+  this.setHammer(this.stance === 'swing' ? 'bone' : 'floor'); this.pos = this.spots[this.stance].slice(); this.moveTo = null;
  }
  setExercise(ex) {
   if (!CLIPS[ex]) return; this.target = ex;
@@ -115,7 +116,7 @@ class Gnome {
   const q = [], P = (name, o) => q.push({ name, ...o });
   if (from === 'swing') P('Male_Bend_Over_Pick_Up', { from: PICK.to, to: PICK.from, rate: PICK.rate, hammer: [[0, 'hand'], [(PICK.to - 1.8) / PICK.rate - .1, 'hand'], [(PICK.to - 1.8) / PICK.rate + .25, 'floor']] });
   if (from === 'pushup') P('push_up_to_idle', { from: 0, to: 2.75, rate: 1.3 });
-  const a = SPOT[from], b = SPOT[to];
+  const a = this.spots[from], b = this.spots[to];
   if (a[0] !== b[0] || a[1] !== b[1]) P('Slow_Orc_Walk', { loop: true, dur: Math.hypot(b[0] - a[0], b[1] - a[1]) / WALK_SPEED, move: [a[0], a[1], b[0], b[1]] });
   if (to === 'swing') P('Male_Bend_Over_Pick_Up', { from: PICK.from, to: PICK.to, rate: PICK.rate, hammer: [[0, 'floor'], [PICK.grab - .1, 'floor'], [PICK.grab + .3, 'hand']] });
   if (to === 'pushup') P('idle_to_push_up', { from: 0, to: 2.55, rate: 1.2 });
@@ -143,15 +144,16 @@ class Gnome {
    st.e += dt; const k = Math.min(1, st.e / st.dur);
    if (!st.loop) st.act.time = st.from + (st.to - st.from) * k;
    if (st.hammer) while (st.hi + 1 < st.hammer.length && st.e >= st.hammer[st.hi + 1][0]) { st.hi++; this.setHammer(st.hammer[st.hi][1]) }
-   if (st.move) { const [x0, z0, x1, z1] = st.move; this.pos = [x0 + (x1 - x0) * k, z0 + (z1 - z0) * k]; this.faceTo = Math.atan2(x1 - x0, z1 - z0) } else this.faceTo = 0;
+   if (st.move) { const [x0, z0, x1, z1] = st.move; this.pos = [x0 + (x1 - x0) * k, z0 + (z1 - z0) * k]; this.faceTo = Math.atan2(x1 - x0, z1 - z0) } else this.faceTo = this.stanceYaw();
    if (k >= 1) { this.step = null; if (!this.queue.length) { this.stance = this.nextStance; this.ready() } }
-  } else this.faceTo = 0;
+  } else this.faceTo = this.stanceYaw();
   this.yaw = lerpAngle(this.yaw, this.faceTo || 0, 1 - Math.exp(-dt * 7));
   this.model.rotation.y = this.yaw; this.model.position.set(this.pos[0] * this.S, 0, this.pos[1] * this.S);
   this.mixer.update(dt);
   if (!this.hitDone && now - this.hitAt >= TIMING[this.hitEx || this.stance].hit) { this.hitDone = true; this.onHit && this.onHit(this) }
   this.placeHammer(dt);
  }
+ stanceYaw() { return this.yawFor ? this.yawFor[this.stance] || 0 : 0 }
  placeHammer(dt) {
   const L = HAMMER_LEN * this.S, root = this.root; root.updateMatrixWorld(true);
   let p, q;
@@ -182,7 +184,7 @@ export function create(canvas, opts = {}) {
  const fill = new THREE.DirectionalLight('#ffcfa0', 1.5); fill.position.set(2, 3, 8); scene.add(fill);
  const glow = new THREE.PointLight('#ff8a3c', 3, 7, 1.6); glow.position.set(0, 1.2, 0); scene.add(glow);
  // diorama: a diamond-shaped stone slab floating in the dark
- const slabW = group ? 10 : 7.4, slab = new THREE.Group(); slab.position.set(group ? 0 : .5, 0, 0); slab.rotation.y = Math.PI / 4; scene.add(slab);
+ const slabW = group ? 10 : 7.4, slab = new THREE.Group(); slab.position.set(...(opts.slabAt || [group ? 0 : .5, 0, 0])); slab.rotation.y = Math.PI / 4; if (opts.slabScale) slab.scale.set(opts.slabScale, 1, opts.slabScale); scene.add(slab);
  const top = new THREE.Mesh(new THREE.PlaneGeometry(slabW, slabW), new THREE.MeshStandardMaterial({ map: tileTexture(), roughness: 1 })); top.rotation.x = -Math.PI / 2; slab.add(top);
  const side = new THREE.MeshStandardMaterial({ map: strataTexture(), roughness: 1, flatShading: true }), depth = 1.3;
  const body = new THREE.Mesh(new THREE.BoxGeometry(slabW, depth, slabW), [side, side, new THREE.MeshBasicMaterial({ visible: false }), side, side, side]); body.position.y = -depth / 2 - .005; slab.add(body);
@@ -204,7 +206,7 @@ export function create(canvas, opts = {}) {
  const box = new THREE.Box3().setFromObject(rockModel), size = box.getSize(new THREE.Vector3()); rockModel.scale.setScalar(rockScale / size.y); rockModel.position.set(0, 0, 0);
  rockModel.updateMatrixWorld(true); const b2 = new THREE.Box3().setFromObject(rockModel); rockModel.position.y -= b2.min.y; rock.add(rockModel);
  const rockTop = rockScale;
- rock.position.set(group ? 0 : 1.75, 0, .72);
+ rock.position.set(...(opts.rockAt || [group ? 0 : 1.75, 0, .72]));
 
  // shards
  const SH = 90, shardGeo = new THREE.DodecahedronGeometry(.07, 0), shardMat = new THREE.MeshStandardMaterial({ color: '#5a5560', emissive: '#ff5a14', emissiveIntensity: .08, roughness: .9, flatShading: true });
@@ -222,13 +224,13 @@ export function create(canvas, opts = {}) {
   const list = [...gnomes.values()], n = list.length;
   list.forEach((g, i) => {
    if (group) { const a = (i / Math.max(1, n)) * Math.PI * 2, r = 2.5 + (n > 8 ? .6 : 0); g.root.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); g.root.rotation.y = -a - Math.PI / 2 }
-   else { g.root.position.set(-.5, 0, -.5); g.root.rotation.y = Math.PI / 3 }
+   else { const r = opts.gnomeRoot || [-.5, -.5, Math.PI / 3]; g.root.position.set(r[0], 0, r[1]); g.root.rotation.y = r[2] }
   });
  }
  function setGnomes(ids) {
   const want = new Set(ids);
   for (const [id, g] of gnomes) if (!want.has(id)) { scene.remove(g.root); gnomes.delete(id) }
-  for (const id of ids) if (!gnomes.has(id)) { const g = new Gnome(assets.gnome, id, group ? 1.3 : 1.6); g.instant = group; g.disc.visible = group; g.onHit = hitLanded; gnomes.set(id, g); scene.add(g.root) }
+  for (const id of ids) if (!gnomes.has(id)) { const g = new Gnome(assets.gnome, id, group ? 1.3 : 1.6, { spots: opts.spots, yawFor: opts.yawFor }); g.instant = group; g.disc.visible = group; g.onHit = hitLanded; gnomes.set(id, g); scene.add(g.root) }
   layout();
  }
  const waves = [], waveMat = new THREE.MeshBasicMaterial({ color: '#ffb067', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
@@ -237,6 +239,7 @@ export function create(canvas, opts = {}) {
   const to = new THREE.Vector3().subVectors(rock.position, g.root.position).setY(0); m.position.addScaledVector(to.normalize(), .3); scene.add(m); waves.push({ m, t: 0 });
  }
  function hitLanded(g) {
+  if (opts.beforeHit && opts.beforeHit(g, g.hitEx || g.stance) === false) return; // the caller handles this blow itself (build mode: only digging chips the boulder)
   if (g.exercise !== 'swing') shock(g);
   const dmg = g.dmg || 1; wobble = .5 + dmg * .12; flash = 1; shake = .02 + dmg * .012;
   const at = rock.position.clone(); at.y = rockTop * .5; const away = new THREE.Vector3().subVectors(g.root.position, rock.position).setY(0).normalize();
@@ -300,7 +303,7 @@ export function create(canvas, opts = {}) {
  function project(id) { const g = gnomes.get(id); if (!g) return null; const v = new THREE.Vector3(g.root.position.x, 1.75 * g.model.scale.x / 1.25, g.root.position.z).project(camera); return { x: (v.x + 1) / 2 * canvas.clientWidth, y: (1 - v.y) / 2 * canvas.clientHeight, behind: v.z > 1 } }
  function dispose() { renderer.dispose(); renderer.forceContextLoss?.() }
  resize();
- return { isBroken: () => broken, opts, setShift, setGnomes, setExercise, project, hit, setHp, breakRock, render, resize, dispose, gnomes, camera, THREE };
+ return { isBroken: () => broken, opts, setShift, setGnomes, setExercise, project, hit, setHp, breakRock, render, resize, dispose, gnomes, camera, THREE, scene, rock, slab, renderer };
 }
 
 // Head-and-shoulders portrait of a player's dwarf (one shared offscreen renderer, cached per tint).

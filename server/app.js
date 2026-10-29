@@ -1,5 +1,5 @@
 'use strict';
-// Kamnelom API: players, leaderboard and group challenges. Node 22.13+/24, no dependencies (node:sqlite, SSE).
+// Dwarf Gym API: players, leaderboard and group challenges. Node 22.13+/24, no dependencies (node:sqlite, SSE).
 // Stores a nickname, a hashed secret and rep counters. No video, no IP addresses, no tracking.
 const http = require('node:http'), crypto = require('node:crypto'), { DatabaseSync } = require('node:sqlite');
 

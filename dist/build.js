@@ -2,7 +2,7 @@
 // Build mode logic (docs/BUILD_MODE.md): materials, shapes, two piles (at the mountain and at the site) and a blueprint.
 // Pure state: no DOM, camera or timers, so it runs in Node tests. One call to rep() is one counted repetition.
 // Grid: x to the right, y up (row 0 stands on the ground). A door is anchored at its bottom cell and covers two rows.
-const BUILD_GRID = { w: 14, h: 10 };
+const BUILD_GRID = { w: 12, h: 8 };
 // dig = swings needed to dig one block (hardness). Hauling and placing do not depend on the material.
 const BUILD_MATERIALS = {
  rubble: { name: 'Rubble', dig: 4 }, sandstone: { name: 'Sandstone', dig: 6 }, brick: { name: 'Brick', dig: 8 },

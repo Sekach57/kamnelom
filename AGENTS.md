@@ -1,7 +1,7 @@
 # Project guidance for Codex
 
 Read README.md and docs/CODEX_HANDOFF.md before editing. Communicate with the user
-in Russian. The primary app is Kamnelom in dist/. The rowing prototype under
+in Russian. The primary app is Dwarf Gym in dist/. The rowing prototype under
 reference/strumok is a separate historical reference, not the main entry point.
 
 - This is a buildless HTML/CSS/JavaScript project. dist/ is hand-written source.

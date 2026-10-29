@@ -2,7 +2,7 @@
 
 Дата экспорта: 2026-10-28.
 
-Камнелом: актуальные dist/ и tests/ скопированы без изменений из последней
+Dwarf Gym: актуальные dist/ и tests/ скопированы без изменений из последней
 опубликованной версии, commit 2a492af3974e514999282fe1b6bae94de3248d25.
 Первая версия: d4b7f7aef796f88875ab3adab1aeaff760331a69.
 Разница двух версий сохранена как history/front-camera-onboarding.patch.
@@ -14,7 +14,7 @@ https://dwarf-kettlebell-swings.steadycivet22.chatgpt.site
 Предыдущая игра для гребли:
 https://strumok-pixel-river-a13.steadycivet22.chatgpt.site
 
-В архиве reference/strumok: отдельный гребной прототип, не режим Камнелома.
+В архиве reference/strumok: отдельный гребной прототип, не режим игры.
 Запуск: npm run dev:rowing, затем http://localhost:4174.
 Проверка: npm run test:rowing.
 

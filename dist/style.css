@@ -199,3 +199,13 @@ details canvas{display:block;margin:8px 0}
  .board-list .face{width:48px;height:48px}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* build screen: same pixel panels as the quarry; its HUD must not follow the quarry menu state (body[data-scr]) */
+.bhud{position:absolute;inset:0;z-index:2;pointer-events:none}.bhud button{pointer-events:auto}
+.score small#bProgLabel{text-align:center;white-space:nowrap;letter-spacing:.06em}
+.buildbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.3fr);gap:18px;padding:16px 18px 18px;margin:14px var(--px) 0;align-items:start}
+.choices.six{grid-template-columns:repeat(3,1fr)}.choices.four{grid-template-columns:repeat(2,1fr)}
+.pick .sw{display:block;width:30px;height:30px;box-shadow:inset 0 0 0 3px var(--edge),inset 0 -6px 0 0 #0005;background:var(--c)}
+.pick[aria-pressed="true"] .sw{box-shadow:inset 0 0 0 3px #1a1006,inset 0 -6px 0 0 #0005}
+.pick.blocked{opacity:.55}
+@media(max-width:1000px){.buildbar{grid-template-columns:1fr}.choices.six{grid-template-columns:repeat(3,1fr)}}
