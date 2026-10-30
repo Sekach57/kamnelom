@@ -51,7 +51,7 @@ export function lookFor(id) {
  const r = k => hash(id + '|' + k), pick = (k, n) => Math.floor(r(k) * n);
  return { tint: pick('tint', TINTS.length), skin: pick('skin', SKIN.length), h: .92 + r('h') * .14, w: .9 + r('w') * .2, belly: .94 + r('belly') * .18, arm: .95 + r('arm') * .1, beard: pick('beard', 3), helmet: pick('helmet', 3), hair: pick('hair', HAIR.length), metal: pick('metal', METAL.length), rare: r('rare') > .93 };
 }
-const HAIR = ['#6b3a1e', '#a8321f', '#2b2430', '#8d8a90', '#d9c9a0', '#4a3a28'], METAL = ['#ffffff', '#c9d3ff', '#ffd9a0', '#d8ffe6', '#ffc4c4'], SKIN = ['#f0c8a8', '#e0a982', '#c68a62', '#9a6644', '#7a4f34'];
+const HAIR = ['#6b3a1e', '#a8321f', '#2b2430', '#8d8a90', '#d9c9a0', '#4a3a28'], METAL = ['#7b8088', '#6e7a9c', '#8f7a55', '#6c8576', '#8a6262'], SKIN = ['#f0c8a8', '#e0a982', '#c68a62', '#9a6644', '#7a4f34'];
 
 // Hand-keyed clips from Blender (docs/BLENDER_SWING.md): per exercise a looping ready stance and a one-rep strike clip.
 // The clips also animate a `Hammer` bone; in the swing the hammer model copies that bone, so both fists stay on the handle.
