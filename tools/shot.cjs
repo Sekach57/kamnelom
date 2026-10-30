@@ -17,6 +17,7 @@ const route={solo:'#/play',build:'#/build',party:'#/party'}[view]||'#/play';
   page.on('console',m=>{if(m.type()==='error'&&!/Failed to load resource/.test(m.text()))problems.push('console.error: '+m.text());if(m.type()==='warning'&&/3D scene unavailable/.test(m.text()))problems.push(m.text())});
   page.on('response',r=>{if(r.status()>=400){const u=new URL(r.url()).pathname;(u.startsWith('/api/')?ignored:problems).push(r.status()+' '+u)}});
   await page.goto(`http://127.0.0.1:${port}/${route}`,{waitUntil:'load'});
+  await page.waitForFunction(()=>window.Scene3D,null,{timeout:30000});
   const ready=await page.evaluate(()=>window.Scene3D?window.Scene3D.ready:false).catch(()=>false);
   await page.waitForTimeout(view==='build'?4000:3000);
   const assets=await page.evaluate(async()=>{
