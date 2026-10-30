@@ -5,6 +5,7 @@
 defaults: preview_cam_solo, swing_ready, frame 0. Output is RENDER_PX square (270) unless px=N is given.
 Options (after the positional arguments):
   hammer=1       show hammer.glb in the hands, RENDER ONLY (see add_render_hammer). Meant for swing_* clips.
+  hammer_glb=PATH  use this hammer file instead of originals/hammer.glb (with hammer=1)
   px=N           square render size, e.g. px=810 for a closer look
   view=front|side|top   use a temporary ortho camera instead of `camera` (frames the whole dwarf)
 The session is never saved and nothing here is called by export_glb.py, so the hammer cannot reach dwarf.glb.
@@ -28,10 +29,10 @@ BONE_TO_NODE = Matrix.Rotation(-math.pi / 2, 4, 'X')
 HAMMER_FIX = Matrix.Rotation(math.pi / 2, 4, 'Y')
 
 
-def add_render_hammer(arm):
+def add_render_hammer(arm, path=None):
     """Import originals/hammer.glb and parent it to bone `Hammer` of `arm`. Returns the hammer object. Never save after this."""
     before = set(bpy.data.objects)
-    bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT, 'blender', 'originals', 'hammer.glb'))
+    bpy.ops.import_scene.gltf(filepath=path or os.path.join(ROOT, 'blender', 'originals', 'hammer.glb'))
     new = [o for o in bpy.data.objects if o not in before]
     h = next(o for o in new if o.type == 'MESH')
     for o in new:
@@ -86,7 +87,7 @@ def main():
     arm.animation_data.action_slot = arm.animation_data.action.slots[0]
     sc.frame_set(frame)
     if opt.get('hammer') == '1':
-        add_render_hammer(arm)
+        add_render_hammer(arm, os.path.abspath(opt['hammer_glb']) if 'hammer_glb' in opt else None)
         sc.frame_set(frame)
     sc.camera = add_view_camera(opt['view'], None) if 'view' in opt else bpy.data.objects[cam]
     if 'px' in opt:
