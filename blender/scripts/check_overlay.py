@@ -103,7 +103,7 @@ def region_data(with_overlays):
         for n, ob in OVERLAYS.items():
             co, tvv = cm.eval_world(ob)
             names_ = {g.index: g.name for g in ob.vertex_groups}
-            if n == 'part_shoulders_plate':
+            if n.startswith('part_shoulders'):
                 side = np.array([names_[max(v.groups, key=lambda g: g.weight).group].startswith('Left') for v in ob.data.vertices])
                 for nm, flag in (('PAD_L', True), ('PAD_R', False)):
                     sel = np.array([side[t[0]] == flag for t in tvv])
