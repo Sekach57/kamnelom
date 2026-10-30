@@ -1,0 +1,243 @@
+{
+ "vertices": 21050,
+ "triangles": 12342,
+ "vertex_groups": 25,
+ "groups_not_in_skeleton": [],
+ "influences_per_vertex": {
+  "1": 708,
+  "2": 4115,
+  "3": 5611,
+  "4": 10616
+ },
+ "weight_sum_min_max": [
+  1.0,
+  1.0
+ ],
+ "weight_on_Hammer": 0.0,
+ "vertices_by_dominant_zone": {
+  "head": 2926,
+  "torso": 837,
+  "armL": 4904,
+  "armR": 4872,
+  "legL": 4297,
+  "legR": 3214
+ },
+ "vertices_zone_share": {
+  ">=0.99": 10257,
+  "0.9-0.99": 4945,
+  "<0.9 (blend)": 5848
+ },
+ "vertices_by_dominant_bone": {
+  "LeftUpLeg": 3234,
+  "RightUpLeg": 2176,
+  "RightShoulder": 2082,
+  "Head": 1941,
+  "LeftArm": 1667,
+  "LeftShoulder": 1519,
+  "RightArm": 1211,
+  "LeftForeArm": 1115,
+  "RightForeArm": 1081,
+  "headfront": 1045,
+  "RightLeg": 913,
+  "LeftLeg": 896,
+  "LeftHand": 578,
+  "RightHand": 522,
+  "Spine02": 397,
+  "LeftFoot": 217,
+  "RightFoot": 195,
+  "Spine01": 182,
+  "Hips": 46,
+  "LeftToeBase": 23,
+  "RightToeBase": 10
+ },
+ "triangles_by_zone_majority": {
+  "armR": 2774,
+  "legR": 2191,
+  "torso": 468,
+  "head": 1453,
+  "armL": 2790,
+  "legL": 2666
+ },
+ "seam_triangles": 622,
+ "seam_pairs": {
+  "legL/legR": 147,
+  "armL/head": 96,
+  "armR/head": 90,
+  "legR/torso": 78,
+  "legL/torso": 59,
+  "armL/torso": 56,
+  "armR/torso": 29,
+  "head/torso": 26,
+  "armR/legR": 12,
+  "armL/legL": 9,
+  "armL/armR": 6,
+  "legL/legR/torso": 6,
+  "armR/legR/torso": 2,
+  "armL/legL/torso": 2,
+  "armR/head/torso": 1,
+  "armL/armR/torso": 1,
+  "armL/armR/head": 1,
+  "armL/head/torso": 1
+ },
+ "bbox_min": [
+  -0.561,
+  -0.204,
+  -0.0
+ ],
+ "bbox_max": [
+  0.555,
+  0.204,
+  1.3
+ ],
+ "zone_extent": {
+  "head": {
+   "min": [
+    -0.082,
+    -0.158,
+    0.964
+   ],
+   "max": [
+    0.083,
+    0.117,
+    1.3
+   ]
+  },
+  "torso": {
+   "min": [
+    -0.152,
+    -0.199,
+    0.752
+   ],
+   "max": [
+    0.161,
+    0.187,
+    0.986
+   ]
+  },
+  "armL": {
+   "min": [
+    0.003,
+    -0.151,
+    0.681
+   ],
+   "max": [
+    0.555,
+    0.193,
+    1.209
+   ]
+  },
+  "armR": {
+   "min": [
+    -0.561,
+    -0.131,
+    0.672
+   ],
+   "max": [
+    -0.005,
+    0.192,
+    1.21
+   ]
+  },
+  "legL": {
+   "min": [
+    -0.01,
+    -0.204,
+    0.0
+   ],
+   "max": [
+    0.33,
+    0.199,
+    0.825
+   ]
+  },
+  "legR": {
+   "min": [
+    -0.329,
+    -0.202,
+    -0.0
+   ],
+   "max": [
+    0.003,
+    0.204,
+    0.842
+   ]
+  }
+ },
+ "central_column_by_height": {
+  "0.00-0.40": {
+   "vertices": 875,
+   "head": 0.0,
+   "torso": 0.0,
+   "armL": 0.0,
+   "armR": 0.0,
+   "legL": 0.52,
+   "legR": 0.48
+  },
+  "0.40-0.75": {
+   "vertices": 2169,
+   "head": 0.0,
+   "torso": 0.0,
+   "armL": 0.0,
+   "armR": 0.0,
+   "legL": 0.57,
+   "legR": 0.43
+  },
+  "0.75-0.95": {
+   "vertices": 1724,
+   "head": 0.0,
+   "torso": 0.44,
+   "armL": 0.02,
+   "armR": 0.01,
+   "legL": 0.25,
+   "legR": 0.28
+  },
+  "0.95-1.30": {
+   "vertices": 5855,
+   "head": 0.5,
+   "torso": 0.01,
+   "armL": 0.24,
+   "armR": 0.25,
+   "legL": 0.0,
+   "legR": 0.0
+  }
+ },
+ "vertices_after_merge_by_position": 6135,
+ "loose_parts": 1,
+ "loose_part_sizes_top10": [
+  6135
+ ],
+ "open_boundary_edges": 84,
+ "non_manifold_edges": 62,
+ "head_zone": {
+  "vertices": 2926,
+  "bbox_min": [
+   -0.082,
+   -0.158,
+   0.964
+  ],
+  "bbox_max": [
+   0.083,
+   0.117,
+   1.3
+  ]
+ },
+ "uv_range": [
+  [
+   0.0,
+   0.0
+  ],
+  [
+   1.0,
+   1.0
+  ]
+ ],
+ "uv_area_share_by_zone": {
+  "armR": 0.222,
+  "legR": 0.201,
+  "torso": 0.044,
+  "head": 0.094,
+  "armL": 0.205,
+  "legL": 0.233
+ },
+ "uv_total_area_of_unit_square": 0.62
+}
