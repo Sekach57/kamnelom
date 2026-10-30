@@ -127,18 +127,21 @@ class Gnome {
  // the sequence of moves that takes him from one exercise's spot to another's
  plan(from, to) {
   const q = [], P = (name, o) => q.push({ name, ...o });
+  const rd = this.clips.swing_raise ? this.clips.swing_raise.duration : 0; // swing_raise: pick-up pose <-> hammer on the shoulder, the hammer rides on its Hammer bone
+  if (from === 'swing' && rd) P('swing_raise', { from: rd, to: 0, rate: 1, fade: .02, hammer: [[0, 'bone'], [rd, 'hand']] });
   if (from === 'swing') P('Male_Bend_Over_Pick_Up', { from: PICK.to, to: PICK.from, rate: PICK.rate, hammer: [[0, 'hand'], [(PICK.to - 1.8) / PICK.rate - .1, 'hand'], [(PICK.to - 1.8) / PICK.rate + .25, 'floor']] });
   if (from === 'pushup') P('push_up_to_idle', { from: 0, to: 2.75, rate: 1.3 });
   const a = this.spots[from], b = this.spots[to];
   if (a[0] !== b[0] || a[1] !== b[1]) P('Slow_Orc_Walk', { loop: true, dur: Math.hypot(b[0] - a[0], b[1] - a[1]) / WALK_SPEED, move: [a[0], a[1], b[0], b[1]] });
   if (to === 'swing') P('Male_Bend_Over_Pick_Up', { from: PICK.from, to: PICK.to, rate: PICK.rate, hammer: [[0, 'floor'], [PICK.grab - .1, 'floor'], [PICK.grab + .3, 'hand']] });
+  if (to === 'swing' && rd) P('swing_raise', { from: 0, to: rd, rate: 1, fade: .02, hammer: [[0, 'bone']] });
   if (to === 'pushup') P('idle_to_push_up', { from: 0, to: 2.55, rate: 1.2 });
   this.queue = q; this.nextStance = to;
  }
  begin(st) { // start a queued step
   this.step = st; st.e = 0; st.dur = st.dur || Math.abs(st.to - st.from) / st.rate; st.hi = 0;
   const a = this.act(st.name); a.reset(); a.setLoop(st.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = true;
-  a.timeScale = st.loop ? 1 : 0; a.time = st.loop ? 0 : st.from; a.paused = false; this.go(a, .3); st.act = a;
+  a.timeScale = st.loop ? 1 : 0; a.time = st.loop ? 0 : st.from; a.paused = false; this.go(a, st.fade ?? .3); st.act = a;
   if (st.hammer && st.hammer[0]) this.setHammer(st.hammer[0][1]);
  }
  strike(ex, now) {
