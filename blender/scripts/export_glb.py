@@ -2,6 +2,7 @@
 
   blender -b blender/src/dwarf.blend --python blender/scripts/export_glb.py -- OUT.glb
 
+Actions named *_v1 (old reference clips kept next to the new ones, see swing_blocking.py) are removed from the session before export.
 Settings: .glb, +Y up, Apply Modifiers, every Action = one clip (export_animation_mode ACTIONS), no cameras/lights,
 no compression (Meshopt is a separate gltf-transform step in phase 6). Fixed names in the file come from the
 bone / action names in the .blend, so the clip list is checked after export, not before.
@@ -17,6 +18,9 @@ if not argv:
 out = os.path.abspath(argv[0])
 os.makedirs(os.path.dirname(out), exist_ok=True)
 
+for act in list(bpy.data.actions):  # reference actions kept in the .blend (e.g. swing_hit_v1) must not become glTF clips; the session is not saved
+    if act.name.endswith('_v1'):
+        bpy.data.actions.remove(act)
 for act in bpy.data.actions:  # ACTIONS mode exports every action; Fake User keeps unassigned ones alive in the .blend
     assert act.use_fake_user, 'action without Fake User: ' + act.name
 
