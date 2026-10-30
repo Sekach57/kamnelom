@@ -158,8 +158,9 @@ for a, b in [('HEAD', 'BEARD'), ('HEAD', 'NECK'), ('BEARD', 'NECK'), ('NECK', 'C
     ex(a, b)
 for s in 'LR':
     for a, b in [('CHEST', 'PAD'), ('PAD', 'UARM'), ('CHEST', 'UARM'), ('UARM', 'FARM'), ('FARM', 'HAND'), ('THIGH', 'SHIN'),
-                 ('SHIN', 'BOOT'), ('PELVIS', 'THIGH'), ('BELT', 'THIGH'), ('NECK', 'PAD')]:
-        ex(a + ('' if a in ('CHEST', 'PELVIS', 'BELT', 'NECK') else '_' + s), b + ('' if b in ('CHEST', 'PELVIS', 'BELT', 'NECK') else '_' + s))
+                 ('SHIN', 'BOOT'), ('PELVIS', 'THIGH'), ('BELT', 'THIGH'), ('NECK', 'PAD'),
+                 ('BELLY', 'THIGH'), ('NECK', 'UARM')]:  # last two: touch already in the rest pose (thick thigh / sleeve next to belly / neck)
+        ex(a + ('' if a in ('CHEST', 'PELVIS', 'BELT', 'NECK', 'BELLY') else '_' + s), b + ('' if b in ('CHEST', 'PELVIS', 'BELT', 'NECK', 'BELLY') else '_' + s))
 
 # triangles of each object grouped by region (rigid pieces: all vertices of a triangle share one bone and one piece id)
 REG_TRIS = {}  # region -> list of (object, tri index array)
@@ -183,31 +184,91 @@ for ob in PARTS:
     for r, lst in byreg.items():
         REG_TRIS.setdefault(r, []).append((ob, np.array(lst)))
 REGIONS = sorted(REG_TRIS)
-PAIRS = [(a, b) for i, a in enumerate(REGIONS) for b in REGIONS[i + 1:] if frozenset((a, b)) not in EXEMPT]
-# the hands hold the hammer together: both fists are checked against each other like everything else
+# the beard is not part of the check (user decision, step 2 redo): every pair with BEARD is dropped
+BODY = [r for r in REGIONS if r != 'BEARD']
+PAIRS = [(a, b) for i, a in enumerate(BODY) for b in BODY[i + 1:] if frozenset((a, b)) not in EXEMPT]
+# the hammer (render / check only) against every body region, except the grip: the handle sits in the fists and along the forearms
+HAMMER_GRIP_EXEMPT = ['HAND_L', 'HAND_R', 'FARM_L', 'FARM_R']
+PAIRS += [('HAMMER', r) for r in BODY if r not in HAMMER_GRIP_EXEMPT]
+
+
+HAM = {'bone': None, 'hand': None, 'mode': None, 'centre': None, 'k': None}
+GAME_USED_FRAMES = {'Male_Bend_Over_Pick_Up': (0, 70)}  # PICK = {from 0, to 2.9 s} in dist/scene3d.js: only the first 2.9 s of the clip are played
+HAND_HAMMER_FRAMES = (29, 70)  # PICK.grab 1.2 s: from there the hammer is in the hand (hmode 'hand'); before that it lies on the floor
+
+
+def init_hammers():
+    """two render-only hammers: one on bone Hammer (swing clips), one placed like the game's 'hand' mode (pick-up clip)"""
+    set_pose_from_channels(clip_channels_cache['swing_ready'], 0.0)
+    HAM['bone'] = rp.add_render_hammer(arm)
+    h = rp.add_render_hammer(arm)
+    pts = [Vector(c) for c in h.bound_box]
+    lo = Vector((min(q[i] for q in pts) for i in range(3)))
+    hi = Vector((max(q[i] for q in pts) for i in range(3)))
+    HAM['centre'], HAM['k'] = (lo + hi) / 2, rp.HAMMER_LEN / max(hi - lo)
+    h.parent = None
+    HAM['hand'] = h
+    for o in (HAM['bone'], HAM['hand']):
+        o.hide_render = o.hide_viewport = True
+
+
+def place_hand_hammer():
+    """scene3d.js placeHammer(), hmode 'hand': p = RightHand + axis * .4 * L, axis = (.1, -1, .3) in game axes; q = basisQuat(axis, (1,0,0)) * HAMMER_FIX"""
+    hand = arm.matrix_world @ arm.pose.bones['RightHand'].head
+    ya = Vector((0.1, -1.0, 0.3)).normalized()
+    z = Vector((1, 0, 0)).cross(ya).normalized()
+    x = ya.cross(z)
+    F = Matrix(((x.x, ya.x, z.x), (x.y, ya.y, z.y), (x.z, ya.z, z.z)))
+    c3 = C4.to_3x3()
+    Fb = c3 @ F @ c3.inverted()
+    p = hand + (c3 @ ya) * (0.4 * rp.HAMMER_LEN)
+    HAM['hand'].matrix_world = Matrix.Translation(p) @ Fb.to_4x4() @ rp.HAMMER_FIX @ Matrix.Scale(HAM['k'], 4) @ Matrix.Translation(-HAM['centre'])
+
+
+def hammer_mode(clip, k):
+    if clip in HAMMER_CLIPS:
+        return 'bone'
+    if clip == 'Male_Bend_Over_Pick_Up' and HAND_HAMMER_FRAMES[0] <= k <= HAND_HAMMER_FRAMES[1]:
+        return 'hand'
+    return None
+
+
+def set_frame(clip, k, t):
+    set_pose_from_channels(clip_channels_cache[clip], t)
+    if HAM['bone'] is None:
+        return
+    mode = hammer_mode(clip, k)
+    HAM['mode'] = mode
+    for key in ('bone', 'hand'):
+        HAM[key].hide_render = HAM[key].hide_viewport = (mode != key)
+    if mode == 'hand':
+        place_hand_hammer()
+        bpy.context.view_layer.update()
+
+
+def eval_world(ob):
+    dg = bpy.context.evaluated_depsgraph_get()
+    e = ob.evaluated_get(dg)
+    me = e.to_mesh()
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    M = np.array(ob.matrix_world)
+    co = co @ M[:3, :3].T + M[:3, 3]
+    me.calc_loop_triangles()
+    tv = np.zeros(len(me.loop_triangles) * 3, int)
+    me.loop_triangles.foreach_get('vertices', tv)
+    e.to_mesh_clear()
+    return co, tv.reshape(-1, 3)
 
 
 def region_bvhs():
-    dg = bpy.context.evaluated_depsgraph_get()
-    cache = {}
-    out = {}
-    for r in REGIONS:
+    cache, out, verts_of = {}, {}, {}
+    for r in BODY:
         verts, tris, off = [], [], 0
         for ob, idx in REG_TRIS[r]:
             if ob.name not in cache:
-                e = ob.evaluated_get(dg)
-                me = e.to_mesh()
-                n = len(me.vertices)
-                co = np.empty(n * 3)
-                me.vertices.foreach_get('co', co)
-                co = co.reshape(-1, 3)
-                M = np.array(ob.matrix_world)
-                co = co @ M[:3, :3].T + M[:3, 3]
-                me.calc_loop_triangles()
-                tv = np.zeros(len(me.loop_triangles) * 3, int)
-                me.loop_triangles.foreach_get('vertices', tv)
-                cache[ob.name] = (co, tv.reshape(-1, 3))
-                e.to_mesh_clear()
+                cache[ob.name] = eval_world(ob)
             co, tv = cache[ob.name]
             sub = tv[idx]
             used = np.unique(sub)
@@ -216,16 +277,37 @@ def region_bvhs():
             tris.extend([tuple(remap[int(x)] for x in t) for t in sub])
             off += len(used)
         out[r] = BVHTree.FromPolygons(verts, tris, all_triangles=True)
-    return out
+        verts_of[r] = np.array(verts)
+    if HAM['mode']:
+        co, tv = eval_world(HAM[HAM['mode']])
+        out['HAMMER'] = BVHTree.FromPolygons(co.tolist(), [tuple(int(i) for i in t) for t in tv], all_triangles=True)
+        verts_of['HAMMER'] = co
+    return out, verts_of
 
 
-def pair_counts():
-    bv = region_bvhs()
+def depth(bva, va, bvb, vb):
+    """deepest point of one region inside the other: vertices of A near B that lie behind B's nearest face, distance to that face (and the reverse)"""
+    best = 0.0
+    for bv, vs, bo in ((bvb, va, vb), (bva, vb, va)):
+        lo, hi = bo.min(0) - 0.02, bo.max(0) + 0.02
+        sel = vs[np.all((vs >= lo) & (vs <= hi), axis=1)]
+        for v in sel:
+            vv = Vector(v)
+            loc, nor, _, d = bv.find_nearest(vv)
+            if loc is not None and (vv - loc).dot(nor) < 0:
+                best = max(best, d)
+    return best
+
+
+def pair_hits():
+    bv, vv = region_bvhs()
     res = {}
     for a, b in PAIRS:
+        if a not in bv or b not in bv:
+            continue
         n = len(bv[a].overlap(bv[b]))
         if n:
-            res[a + '|' + b] = n
+            res[a + '|' + b] = (n, depth(bv[a], vv[a], bv[b], vv[b]))
     return res
 
 
@@ -261,24 +343,31 @@ def cmd_intersect(out):
     reset_pose()
     arm.data.pose_position = 'REST'
     bpy.context.view_layer.update()
-    base = pair_counts()
+    init_hammers()
+    reset_pose()
+    base = pair_hits()
     print('REST BASELINE', base)
-    report = {'baseline_rest': base, 'regions': REGIONS, 'checked_pairs': len(PAIRS), 'clips': {}}
+    report = {'baseline_rest': {k: list(v) for k, v in base.items()}, 'regions': BODY, 'checked_pairs': len(PAIRS),
+              'excluded': {'beard': 'all pairs with BEARD', 'hammer_grip': HAMMER_GRIP_EXEMPT,
+                           'designed_overlaps': sorted('|'.join(sorted(e)) for e in EXEMPT)}, 'clips': {}}
     for clip in NATIVE + MOVES:
-        ch = clip_channels_cache[clip]
-        ts = clip_times(ch)
+        ts = clip_times(clip_channels_cache[clip])
         hits = {}
         for k, t in enumerate(ts):
-            set_pose_from_channels(ch, t)
-            for pr, n in pair_counts().items():
-                hits.setdefault(pr, []).append((k, n))
+            set_frame(clip, k, t)
+            for pr, (n, d) in pair_hits().items():
+                hits.setdefault(pr, []).append((k, n, d))
         summ = {}
+        lim = GAME_USED_FRAMES.get(clip)
         for pr, lst in hits.items():
-            frames = [k for k, _ in lst]
-            summ[pr] = {'frames': len(frames), 'first': frames[0], 'last': frames[-1], 'max_tri_pairs': max(n for _, n in lst),
-                        'worst_frame': max(lst, key=lambda x: x[1])[0], 'frame_list': frames if len(frames) <= 40 else frames[:40] + ['...']}
+            frames = [k for k, _, _ in lst]
+            w = max(lst, key=lambda x: x[2])
+            summ[pr] = {'frames': len(frames), 'first': frames[0], 'last': frames[-1], 'max_tri_pairs': max(n for _, n, _ in lst),
+                        'max_depth_cm': round(w[2] * 100, 2), 'worst_frame': w[0],
+                        'frames_in_game_range': (sum(1 for f in frames if lim[0] <= f <= lim[1]) if lim else len(frames)),
+                        'frame_list': frames if len(frames) <= 40 else frames[:40] + ['...']}
         report['clips'][clip] = {'frames': len(ts), 'intersections': summ}
-        print('CLIP %-24s frames %-4d pairs with overlap: %d %s' % (clip, len(ts), len(summ), json.dumps({p: (v['frames'], v['max_tri_pairs']) for p, v in summ.items()})))
+        print('CLIP %-24s frames %-4d pairs with overlap: %d %s' % (clip, len(ts), len(summ), json.dumps({p: (v['frames'], v['max_depth_cm']) for p, v in summ.items()})))
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     json.dump(report, open(out, 'w'), indent=1)
     print('WROTE', out)
@@ -289,13 +378,15 @@ def key_frames(clip, ts):
     if clip in IMPACT:
         imp = min(n, int(round(IMPACT[clip] * FPS)))
         return [0, imp // 2, imp, n]
+    if clip in GAME_USED_FRAMES:  # start, hammer grabbed (1.2 s), middle of the lift, end of the played segment (2.9 s)
+        return [0, HAND_HAMMER_FRAMES[0], 50, GAME_USED_FRAMES[clip][1]]
     return [0, n // 3, (2 * n) // 3, n]
 
 
 def cmd_render(outdir, only):
     sc = bpy.context.scene
     outdir = os.path.abspath(outdir)
-    reset_pose()  # no action: the render must not re-evaluate the saved action over the pose written by set_pose_from_channels
+    reset_pose()
     sc.frame_set(0)
     os.makedirs(outdir, exist_ok=True)
     sc.render.engine = 'BLENDER_WORKBENCH'
@@ -310,18 +401,12 @@ def cmd_render(outdir, only):
     cams = {v: rp.add_view_camera(v, None) for v in ('front', 'side', 'top')}
     for c in cams.values():
         c.data.ortho_scale = 2.2
-    hammer = None
+    init_hammers()
     for clip in (only or NATIVE + MOVES):
-        ch = clip_channels_cache[clip]
-        ts = clip_times(ch)
+        ts = clip_times(clip_channels_cache[clip])
         kf = key_frames(clip, ts)
-        if clip in HAMMER_CLIPS and hammer is None:
-            set_pose_from_channels(ch, 0.0)
-            hammer = rp.add_render_hammer(arm)
-        if hammer is not None:
-            hammer.hide_render = clip not in HAMMER_CLIPS
         for i, f in enumerate(kf):
-            set_pose_from_channels(ch, ts[f])
+            set_frame(clip, f, ts[f])
             for v, cam in cams.items():
                 sc.camera = cam
                 sc.render.filepath = os.path.join(outdir, '%s_%d_f%03d_%s.png' % (clip, i, f, v))
