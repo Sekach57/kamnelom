@@ -10,8 +10,8 @@ dist/scene3d.js placeHammer() is fitted to that orientation, so the new file is 
 HAMMER_LEN (0.72) and centres the box, so everything here is built at 0.72 already: the handle (the longest part) sets the box, centred on 0.
 
 Parts (metres == model units, handle length 0.72, nothing sticks out past the handle ends):
-  mat_wood        octagonal handle, diameter 0.035, x -0.356 .. +0.36
-  mat_steel       head 0.11 (along the handle) x 0.22 (strike axis) x 0.11, chamfered, centre x = -0.26
+  mat_wood        octagonal handle, diameter 0.045, x -0.356 .. +0.30, then a flared butt (cone, r 0.0225 -> 0.033) to +0.36
+  mat_steel       head 0.15 (along the handle) x 0.30 (strike axis) x 0.15, chamfered, centre x = -0.25
   mat_steel_face  the two end faces of the head (the strike faces), lighter
   mat_iron        two bands on the handle at the head and a wedge in the top end (x -0.36 .. -0.348)
 """
@@ -28,14 +28,15 @@ BLEND = os.path.join(ROOT, 'blender', 'src', 'hammer_new.blend')
 GLB = os.path.join(ROOT, 'tmp', 'hammer_new', 'hammer.glb')
 
 LEN = 0.72
-R_HANDLE = 0.0175
+R_HANDLE = 0.0225   # diameter 0.045
+FLARE_X, R_FLARE = 0.30, 0.033   # the butt end widens slightly (cone) from x = 0.30 to the butt
 X_TOP, X_BUTT = -LEN / 2, LEN / 2
-HEAD_X, HEAD_LEN, HEAD_W, HEAD_T = -0.26, 0.11, 0.22, 0.11  # centre along the handle, size along handle / strike axis / thin side
+HEAD_X, HEAD_LEN, HEAD_W, HEAD_T = -0.25, 0.15, 0.30, 0.15  # centre along the handle, size along handle / strike axis / thin side
 MATS = {  # name: (base colour, roughness)
-    'mat_steel': ((0.16, 0.17, 0.20, 1), 0.55),
-    'mat_steel_face': ((0.66, 0.68, 0.72, 1), 0.45),
+    'mat_steel': ((0.07, 0.075, 0.09, 1), 0.55),
+    'mat_steel_face': ((0.85, 0.87, 0.90, 1), 0.45),
     'mat_iron': ((0.07, 0.07, 0.08, 1), 0.6),
-    'mat_wood': ((0.50, 0.30, 0.13, 1), 0.8),
+    'mat_wood': ((0.42, 0.24, 0.10, 1), 0.8),
 }
 ORDER = ['mat_steel', 'mat_steel_face', 'mat_iron', 'mat_wood']
 
@@ -70,10 +71,14 @@ def build_mesh():
         seen.update(fs)
         return fs
 
-    # handle (wood)
+    # handle (wood) + flared butt
     top = -0.356
-    r = bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=8, radius1=R_HANDLE, radius2=R_HANDLE, depth=X_BUTT - top)
-    along_x(bm, r['verts'], (X_BUTT + top) / 2)
+    r = bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=8, radius1=R_HANDLE, radius2=R_HANDLE, depth=FLARE_X - top)
+    along_x(bm, r['verts'], (FLARE_X + top) / 2)
+    for f in new_faces():
+        f.material_index = 3
+    r = bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=8, radius1=R_HANDLE, radius2=R_FLARE, depth=X_BUTT - FLARE_X)
+    along_x(bm, r['verts'], (FLARE_X + X_BUTT) / 2)
     for f in new_faces():
         f.material_index = 3
     # head (steel + lighter strike faces), chamfered
@@ -81,19 +86,19 @@ def build_mesh():
     bmesh.ops.scale(bm, verts=r['verts'], vec=(HEAD_LEN, HEAD_T, HEAD_W))
     bmesh.ops.translate(bm, verts=r['verts'], vec=(HEAD_X, 0, 0))
     edges = list({e for v in r['verts'] for e in v.link_edges})
-    bmesh.ops.bevel(bm, geom=edges, offset=0.010, segments=1, affect='EDGES')
+    bmesh.ops.bevel(bm, geom=edges, offset=0.012, segments=1, affect='EDGES')
     for f in new_faces():
         f.normal_update()
         f.material_index = 1 if abs(f.normal.z) > 0.99 else 0
     # bands on the handle at the head (iron)
-    for x in (HEAD_X + HEAD_LEN / 2 + 0.014, HEAD_X - HEAD_LEN / 2 - 0.014):
-        r = bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=8, radius1=0.028, radius2=0.028, depth=0.02)
+    for x in (HEAD_X + HEAD_LEN / 2 + 0.012, HEAD_X - HEAD_LEN / 2 - 0.012):
+        r = bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=8, radius1=0.037, radius2=0.037, depth=0.02)
         along_x(bm, r['verts'], x)
         for f in new_faces():
             f.material_index = 2
     # wedge in the top end (iron), flush with the handle end
     r = bmesh.ops.create_cube(bm, size=1.0)
-    bmesh.ops.scale(bm, verts=r['verts'], vec=(0.012, 0.008, 0.030))
+    bmesh.ops.scale(bm, verts=r['verts'], vec=(0.012, 0.010, 0.040))
     bmesh.ops.translate(bm, verts=r['verts'], vec=(-LEN / 2 + 0.006, 0, 0))
     for f in new_faces():
         f.material_index = 2
