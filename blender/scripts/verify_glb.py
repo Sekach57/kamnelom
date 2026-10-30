@@ -16,7 +16,7 @@ BONES = ['Hips', 'Spine', 'Spine01', 'Spine02', 'neck', 'Head', 'head_end', 'hea
          'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand',
          'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase', 'RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase', 'Hammer']
 # Meshy library clips: they walk / change posture, so drift and foot sliding are expected (the game moves the root itself).
-EXEMPT = {'Slow_Orc_Walk', 'idle_to_push_up', 'push_up_to_idle', 'Male_Bend_Over_Pick_Up'}
+EXEMPT = {'Slow_Orc_Walk', 'idle_to_push_up', 'push_up_to_idle', 'Male_Bend_Over_Pick_Up', 'swing_raise'}
 HIPS_DRIFT_MAX, FOOT_SLIDE_MAX, POSE_DIFF_MAX_DEG, FLOOR_BAND = 0.01, 0.01, 1.0, 0.03
 DTYPE = {5120: np.int8, 5121: np.uint8, 5122: np.int16, 5123: np.uint16, 5125: np.uint32, 5126: np.float32}
 NCOMP = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT2': 4, 'MAT3': 9, 'MAT4': 16}

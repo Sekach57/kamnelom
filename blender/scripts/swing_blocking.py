@@ -1,4 +1,4 @@
-"""Stage 1 of the new swing clips: BLOCKING (key poses only, linear between keys, no easing, no breathing).
+"""Swing clips: key poses, in-betweens, swing_ready breathing and the swing_raise transition (stage 2; stage 1 was blocking only).
 
   blender -b --python blender/scripts/swing_blocking.py            # builds blender/src/dwarf_swing.blend from blender/src/dwarf.blend
   blender -b --python blender/scripts/swing_blocking.py -- print   # same, but only prints the diagnostics, saves nothing
@@ -36,8 +36,9 @@ CM = 100.0  # world metres -> armature space (the armature object is scaled 0.01
 # BREATHING NOTE (stage 2): swing_ready gets its light breathing as small Spine02/Spine01/Spine/shoulder pitch + Hammer bob keys at
 # frames 12, 24, 36 on top of the frame-0 pose, with frame 48 == frame 0 kept exactly. Not done in this stage.
 
-KEY_FRAMES = [0, 6, 12, 14, 20, 48]
+KEY_FRAMES = [0, 6, 12, 14, 19, 48]  # rebound peak on frame 19 (0.79 s): the visible blow ends before MIN_GAP = 0.8 s
 LAST = 48
+RAISE_LAST = 16  # swing_raise: 17 frames, 0.71 s
 
 bpy.ops.wm.open_mainfile(filepath=SRC)
 arm = bpy.data.objects['Armature']
@@ -265,50 +266,236 @@ def impact_pose():
     return pose, diag
 
 
-REBOUND_DZ, REBOUND_PITCH = 0.075, 9.0  # frame 20: hammer translated up and the head end pitched up about the right grip
+
+# --------------------------------------------------------------------------------------------------------- key poses (stage 2)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import verify_glb as vg  # noqa: E402
+import numpy as np  # noqa: E402,F401
+
+READY_VARIANTS = {  # (butt m, handle direction): hammer on the right shoulder, right fist near the butt, left fist 0.216 m along the handle
+    'a': (V((-0.05, -0.26, 0.90)), V((-0.20, 0.62, 0.76))),
+    'b': (V((-0.10, -0.30, 0.96)), V((-0.16, 0.66, 0.74))),
+    'c': (V((-0.02, -0.30, 1.00)), V((-0.30, 0.62, 0.72))),
+    'd': (V((-0.08, -0.34, 1.04)), V((-0.22, 0.70, 0.68))),
+    'e': (V((-0.08, -0.34, 0.98)), V((-0.22, 0.66, 0.72))),
+    'f': (V((-0.10, -0.37, 1.01)), V((-0.24, 0.66, 0.70))),
+    'g': (V((-0.06, -0.33, 0.94)), V((-0.20, 0.62, 0.76))),
+}
+READY_HAMMER = READY_VARIANTS[os.environ.get('READY', 'e')]
+POLE_OUT = {'Left': V((1, 0.1, 0.1)), 'Right': V((-1, 0.1, 0.1))}
+WIND_HAMMER = (V((-0.02, -0.20, 1.30)), V((-0.04, 0.92, 0.34)))
+POLE_HIGH = {'Left': V((1, -0.1, 0.5)), 'Right': V((-1, -0.1, 0.5))}
+BODY_BONES = ('Hips', 'Spine02', 'Spine01', 'Spine', 'neck', 'Head', 'head_end', 'headfront', 'LeftShoulder', 'RightShoulder')
+REBOUND_DZ, REBOUND_PITCH = 0.075, 9.0
 
 
-def rebound_pose():
-    pose = Pose({n: OLD12_B[n] for n in ('Hips', 'Spine02', 'Spine01', 'Spine', 'neck', 'Head', 'head_end', 'headfront', 'LeftShoulder', 'RightShoulder')})
-    # the body gives back: chest rolls back a few degrees, hips come up 1.5 cm, head follows
-    pose.add_local_rot('Spine02', (-3, 0, 0))
-    pose.add_local_rot('Spine01', (-4, 0, 0))
-    pose.add_local_rot('Spine', (-3, 0, 0))
-    pose.add_local_rot('Head', (3, 0, 0))
-    pose.B['Hips'] = trans(V((0, 0.012, 0.015)) * CM) @ OLD12_B['Hips'] if False else pose.B['Hips']
+class Key:
+    """a key pose: local bases of the body bones, hammer (butt position m + handle direction, roll 0), elbow poles"""
+
+    def __init__(self, body, butt, d, poles):
+        self.body, self.butt, self.d, self.poles = {n: body[n].copy() for n in BODY_BONES}, butt.copy(), d.normalized(), poles
+
+
+def key_from_pose(pose, hammer_world, poles):
+    y = (hammer_world.to_3x3() @ V((0, 1, 0))).normalized()
+    return Key(pose.B, hammer_world.translation / CM - y * 0.36, y, poles)
+
+
+def make_keys():
+    keys = {}
+    keys[0] = key_from_pose(build_pose(READY), hammer_matrix(*READY_HAMMER), POLE_OUT)
+    keys[6] = key_from_pose(build_pose(WIND), hammer_matrix(*WIND_HAMMER), POLE_HIGH)
+    p12, _ = impact_pose()
+    keys[12] = key_from_pose(p12, H12, POLE_OLD)
+    keys[14] = keys[12]
+    p19 = Pose({n: OLD12_B[n] for n in BODY_BONES})
+    p19.add_local_rot('Spine02', (-3, 0, 0))
+    p19.add_local_rot('Spine01', (-4, 0, 0))
+    p19.add_local_rot('Spine', (-3, 0, 0))
+    p19.add_local_rot('Head', (3, 0, 0))
     grip = (H12 @ GRIP_POS['Right']).copy()
-    hw = trans(V((0, 0, REBOUND_DZ * CM))) @ about(grip, Matrix.Rotation(math.radians(-REBOUND_PITCH), 3, 'X')) @ H12
-    diag = finish_pose(pose, hw, POLE_OLD)
+    h19 = trans(V((0, 0, REBOUND_DZ * CM))) @ about(grip, Matrix.Rotation(math.radians(-REBOUND_PITCH), 3, 'X')) @ H12
+    keys[19] = key_from_pose(p19, h19, POLE_OLD)
+    keys[48] = keys[0]
+    return keys
+
+
+# easing of each segment of swing_hit: (frame a, frame b, ease, swing direction of the handle in the YZ plane (0 = shortest), grip bulge m)
+ease_io = lambda t: t * t * (3 - 2 * t)  # noqa: E731
+ease_in = lambda t: t ** 2.2  # noqa: E731
+ease_out = lambda t: 1 - (1 - t) ** 2.5  # noqa: E731
+ease_io5 = lambda t: t * t * t * (t * (6 * t - 15) + 10)  # noqa: E731
+SEGMENTS = [(0, 6, ease_io, 0, V((0, 0, 0))), (6, 12, ease_in, +1, V((0, -0.04, 0.05))), (12, 14, lambda t: 0.0, 0, V((0, 0, 0))),
+            (14, 19, ease_out, 0, V((0, 0, 0))), (19, 48, ease_io5, -1, V((0, -0.02, 0.03)))]
+
+
+def lerp_basis(a, b, t):
+    ta, qa, _ = a.decompose()
+    tb, qb, _ = b.decompose()
+    return trans(ta.lerp(tb, t)) @ qa.slerp(qb, t).to_matrix().to_4x4()
+
+
+def arc_dir(d0, d1, t, direction):
+    """handle direction swung in the YZ plane (angle th = atan2(z, y)), the x part blended linearly; direction +1 / -1 / 0 (shortest)"""
+    a0, a1 = math.degrees(math.atan2(d0.z, d0.y)), math.degrees(math.atan2(d1.z, d1.y))
+    if direction == 0:
+        delta = ((a1 - a0 + 180) % 360) - 180
+    elif direction > 0:
+        delta = (a1 - a0) % 360
+    else:
+        delta = -((a0 - a1) % 360)
+    x = d0.x + (d1.x - d0.x) * t
+    s = math.sqrt(max(0.0, 1 - x * x))
+    a = math.radians(a0 + delta * t)
+    return V((x, s * math.cos(a), s * math.sin(a)))
+
+
+def frame_state(k0, k1, t, direction, bulge):
+    body = {n: lerp_basis(k0.body[n], k1.body[n], t) for n in BODY_BONES}
+    d = arc_dir(k0.d, k1.d, t, direction)
+    butt = k0.butt.lerp(k1.butt, t) + bulge * (4 * t * (1 - t))
+    poles = {s: k0.poles[s].lerp(k1.poles[s], t) for s in ('Left', 'Right')}
+    return body, butt, d, poles
+
+
+def solve_frame(body, butt, d, poles, extra=None):
+    pose = Pose(body)
+    if extra:
+        extra(pose)
+    diag = finish_pose(pose, hammer_matrix(butt, d), poles)
     return pose, diag
 
 
-def make_poses():
-    ready_h = hammer_matrix(*READY_HAMMER, roll=READY_ROLL)
-    wind_h = hammer_matrix(*WIND_HAMMER, roll=WIND_ROLL)
-    poses, diags = {}, {}
-    poses[0], diags[0] = keyed_pose(READY, ready_h, POLE_OUT)
-    poses[6], diags[6] = keyed_pose(WIND, wind_h, POLE_HIGH)
-    poses[12], diags[12] = impact_pose()
-    poses[14] = poses[12]
-    diags[14] = diags[12]
-    poses[20], diags[20] = rebound_pose()
-    poses[48] = poses[0]
-    diags[48] = diags[0]
-    return poses, diags
+def swing_hit_frames(keys):
+    out = []
+    for f in range(0, LAST + 1):
+        a, b, ease, direction, bulge = next(s for s in SEGMENTS if s[0] <= f <= s[1] and (f < s[1] or s[1] == LAST))
+        t = ease((f - a) / (b - a))
+        body, butt, d, poles = frame_state(keys[a], keys[b], t, direction, bulge)
+        out.append(solve_frame(body, butt, d, poles))
+    return out
 
 
-# --------------------------------------------------------------------------------------------------------- build actions
-def make_action(name, keys, poses):
+def swing_ready_frames(keys):
+    out = []
+    k = keys[0]
+    for f in range(0, LAST + 1):
+        s = math.sin(2 * math.pi * f / LAST)  # one slow breath per loop; frames 0 and 48 are identical
+
+        def extra(pose, s=s):
+            pose.add_local_rot('Spine02', (0.5 * s, 0, 0))
+            pose.add_local_rot('Spine01', (0.7 * s, 0, 0))
+            pose.add_local_rot('Spine', (0.8 * s, 0, 0))
+            pose.add_local_rot('LeftShoulder', (0, 0, -1.2 * s))
+            pose.add_local_rot('RightShoulder', (0, 0, 1.2 * s))
+        out.append(solve_frame(k.body, k.butt + V((0, 0, 0.004 * s)), k.d, k.poles, extra))
+    return out
+
+
+# --------------------------------------------------------------------------------------------------------- swing_raise
+gm = vg.Gltf(os.path.join(ROOT, 'blender', 'originals', 'dwarf_moves.glb'))
+gd = vg.Gltf(os.path.join(ROOT, 'blender', 'originals', 'dwarf.glb'))
+rig, rig_m = vg.Rig(gd), vg.Rig(gm)
+C4 = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))  # glTF (x, y, z) -> Blender (x, -z, y)
+CM3 = Matrix(((1, 0, 0), (0, 0, 1), (0, -1, 0)))  # Blender vector -> three.js / glTF vector
+PICK_TO = 2.9  # PICK.to in dist/scene3d.js: where Male_Bend_Over_Pick_Up stops when he is about to swing
+
+
+def pickup_pose(t=PICK_TO):
+    """local bases of the 24 bones at second t of Male_Bend_Over_Pick_Up (dwarf_moves.glb tracks applied to the dwarf skeleton by node NAME,
+    same retarget as check_modular.py: node frame -> bone frame by the constant offset K measured in the rest pose)"""
+    anim = next(a for a in gm.j['animations'] if a['name'] == 'Male_Bend_Over_Pick_Up')
+    ch = {}
+    for (ni, path), v in rig_m.sample_channels(anim).items():
+        nm = rig_m.name[ni]
+        if nm in rig.byname:
+            ch[(rig.byname[nm], path)] = v
+    W_rest, _ = rig.pose({}, 0.0)
+    W, _ = rig.pose(ch, t)
+    arm_inv = arm.matrix_world.inverted()
+
+    def conv(M):
+        return C4 @ Matrix(M.tolist()) @ C4.inverted()
+    pose = Pose()
+    for n in ORDER:
+        if n == 'Hammer':
+            continue
+        ni = rig.byname[n]
+        K = (arm_inv @ conv(W_rest[ni])).inverted() @ REST[n]
+        pose.set_world(n, arm_inv @ conv(W[ni]) @ K)
+    return pose
+
+
+def game_hand_hammer(pose):
+    """Hammer bone world matrix (armature space, cm) that makes the Hammer-bone placement equal placeHammer()'s 'hand' mode:
+    p = RightHand + 0.4 L * axis(.1,-1,.3), q = basisQuat(axis, (1,0,0)) * HAMMER_FIX (three.js axes); converted with the measured relation
+    mesh rotation = R_bone * Rx(-90) * Ry(90) (render_preview.py). Returns (matrix, handle direction in Blender axes)."""
+    hand_t = CM3 @ (pose.P('RightHand').translation / CM)
+    axis = V((0.1, -1, 0.3)).normalized()
+    z = V((1, 0, 0)).cross(axis).normalized()
+    x = axis.cross(z)
+    Q = Matrix(((x.x, axis.x, z.x), (x.y, axis.y, z.y), (x.z, axis.z, z.z)))
+    M = Q @ Matrix.Rotation(math.radians(-90), 3, 'Z')
+    mesh_B = CM3.inverted() @ M @ CM3
+    fix = Matrix.Rotation(math.radians(-90), 3, 'X') @ Matrix.Rotation(math.radians(90), 3, 'Y')
+    R_bone = mesh_B @ fix.inverted()
+    centre_t = hand_t + axis * (0.4 * 0.72)
+    return trans((CM3.inverted() @ centre_t) * CM) @ R_bone.to_4x4(), CM3.inverted() @ axis
+
+
+def swing_raise_frames(keys):
+    p_start = pickup_pose()
+    h_start, d_start = game_hand_hammer(p_start)
+    p_end, _ = solve_frame(keys[0].body, keys[0].butt, keys[0].d, keys[0].poles)
+    y0 = (h_start.to_3x3() @ V((0, 1, 0))).normalized()
+    butt0 = h_start.translation / CM - y0 * 0.36
+    base = hammer_matrix(butt0, y0).to_3x3()
+    z_b, z_s = base.col[2], h_start.to_3x3().col[2]
+    roll0 = math.atan2(z_b.cross(z_s).dot(y0), z_b.dot(z_s))  # roll of the start hammer about its handle vs the roll-0 frame
+    out = []
+    for f in range(RAISE_LAST + 1):
+        e = ease_io(f / RAISE_LAST)
+        B = {n: lerp_basis(p_start.B[n], p_end.B[n], e) for n in NAMES if n != 'Hammer'}
+        d = arc_dir(y0, keys[0].d, e, -1)
+        butt = butt0.lerp(keys[0].butt, e) + V((0, -0.06, 0.12)) * (4 * e * (1 - e))
+        hw = hammer_matrix(butt, d) @ Matrix.Rotation(roll0 * (1 - e), 4, 'Y')
+        pose = Pose(B)
+        zero = {'reach_err_Left': 0.0, 'reach_err_Right': 0.0, 'leg_err_Left': 0.0, 'leg_err_Right': 0.0}
+        if f == 0:
+            pose.set_world('Hammer', h_start)
+            out.append((pose, zero))
+            continue
+        if f == RAISE_LAST:
+            out.append((p_end, zero))
+            continue
+        fk = {n: pose.B[n].copy() for n in ('LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand')}
+        pose.set_world('Hammer', hw)
+        diag = dict(zero)
+        for side in ('Left', 'Right'):
+            diag['reach_err_' + side] = two_bone(pose, side + 'Arm', side + 'ForeArm', side + 'Hand', hw @ GRIP_POS[side], keys[0].poles[side],
+                                                 hw.to_3x3() @ GRIP_ROT[side], ref=OLD12_B)
+        wr, wl = ease_io(min(1.0, f / 7.0)), ease_io(min(1.0, max(0.0, (f - 5) / 8.0)))  # right fist is on the handle from the start, the left one joins later
+        for n, m in fk.items():
+            w = wl if n.startswith('Left') else wr
+            pose.B[n] = lerp_basis(m, pose.B[n], w)
+        for side in ('Left', 'Right'):  # real distance of the wrist to the grip point (cm) after the blend
+            diag['reach_err_' + side] = (pose.P(side + 'Hand').translation - (hw @ GRIP_POS[side])).length
+        out.append((pose, diag))
+    return out
+
+
+# --------------------------------------------------------------------------------------------------------- actions
+def make_action_frames(name, frames):
     act = bpy.data.actions.new(name)
     act.use_fake_user = True
     slot = act.slots.new('OBJECT', 'Armature')
     arm.animation_data.action = act
     arm.animation_data.action_slot = slot
     prev = {}
-    for f in keys:
+    for f, (pose, _) in enumerate(frames):
         for n in NAMES:
             pb = arm.pose.bones[n]
-            pb.matrix_basis = poses[f].B[n]
+            pb.matrix_basis = pose.B[n]
             q = pb.rotation_quaternion.copy()
             if n in prev:
                 q.make_compatible(prev[n])
@@ -326,34 +513,32 @@ def make_action(name, keys, poses):
     return act
 
 
-def report(poses, diags):
-    for f in KEY_FRAMES:
-        pose = poses[f]
-        hw = unscale(pose.P('Hammer'))
-        head = hw @ Vector((0, 0.246 * CM, 0))
-        el = {s: tuple(round(c / CM, 3) for c in pose.P(s + 'ForeArm').translation) for s in ('Left', 'Right')}
-        print('POSE f%02d hammer centre %s dir %s head-block %s elbowL %s elbowR %s reach_err L %.2f R %.2f cm, leg_err L %.2f R %.2f cm' % (
-            f, tuple(round(c / CM, 3) for c in hw.translation), tuple(round(c, 2) for c in (hw.to_3x3() @ V((0, 1, 0)))),
-            tuple(round(c / CM, 3) for c in head), el['Left'], el['Right'], diags[f]['reach_err_Left'], diags[f]['reach_err_Right'],
-            diags[f]['leg_err_Left'], diags[f]['leg_err_Right']))
+def reset_pose():
+    arm.animation_data.action = None
+    for pb in arm.pose.bones:
+        pb.matrix_basis = Matrix.Identity(4)
 
 
 def main():
-    poses, diags = make_poses()
-    report(poses, diags)
+    keys = make_keys()
+    clips = {'swing_hit': swing_hit_frames(keys), 'swing_ready': swing_ready_frames(keys), 'swing_raise': swing_raise_frames(keys)}
+    for name, fr in clips.items():
+        worst = {k: max(d[k] for _, d in fr) for k in fr[0][1]}
+        print('IKERR', name, {k: round(v, 3) for k, v in worst.items()}, 'frames', len(fr))
+        print('IKFRAMES', name, [(i, round(d['reach_err_Left'], 1), round(d['reach_err_Right'], 1)) for i, (_, d) in enumerate(fr) if max(d['reach_err_Left'], d['reach_err_Right']) > 0.5])
+    for f in KEY_FRAMES:
+        pose, dg = clips['swing_hit'][f]
+        hw = unscale(pose.P('Hammer'))
+        print('POSE f%02d hammer centre %s head-block %s  reach L %.2f R %.2f cm' % (f, tuple(round(c / CM, 3) for c in hw.translation),
+              tuple(round(c / CM, 3) for c in (hw @ Vector((0, 0.25 * CM, 0)))), dg['reach_err_Left'], dg['reach_err_Right']))
     if PRINT_ONLY:
         return
     for a in list(bpy.data.actions):
-        if a.name in ('swing_ready', 'swing_hit'):
+        if a.name in clips:
             bpy.data.actions.remove(a)
-    arm.animation_data.action = None
-    for pb in arm.pose.bones:
-        pb.matrix_basis = Matrix.Identity(4)
-    make_action('swing_ready', [0, LAST], poses)
-    arm.animation_data.action = None
-    for pb in arm.pose.bones:
-        pb.matrix_basis = Matrix.Identity(4)
-    make_action('swing_hit', KEY_FRAMES, poses)
+    for name, fr in clips.items():
+        reset_pose()
+        make_action_frames(name, fr)
     arm.animation_data.action = bpy.data.actions['swing_ready']
     arm.animation_data.action_slot = bpy.data.actions['swing_ready'].slots[0]
     scene.frame_start, scene.frame_end = 0, LAST

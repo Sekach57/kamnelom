@@ -12,7 +12,7 @@ import sys
 from PIL import Image, ImageDraw
 
 src, out = sys.argv[1], sys.argv[2]
-COLS = [('swing_hit_f%03d' % f, 'new f%d' % f) for f in (0, 6, 12, 14, 20, 48)] + [('old_swing_hit_f012', 'OLD f12')]
+COLS = [('swing_hit_f%03d' % f, 'new f%d' % f) for f in (0, 6, 12, 14, 19, 48)] + [('old_swing_hit_f012', 'OLD f12')]
 VIEWS = ['front', 'side', 'top']
 img = {(t, v): Image.open(os.path.join(src, '%s_%s.png' % (t, v))).convert('RGB') for t, _ in COLS for v in VIEWS}
 pad, lab, n = 6, 16, len(COLS)

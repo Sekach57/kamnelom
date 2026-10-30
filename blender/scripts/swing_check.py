@@ -30,7 +30,7 @@ import render_preview as rp  # noqa: E402
 arm = bpy.data.objects['Armature']
 scene = bpy.context.scene
 CHAR1 = bpy.data.objects['char1']
-KEYS = [0, 6, 12, 14, 20, 48]
+KEYS = [0, 6, 12, 14, 19, 48]
 
 
 def use(action, frame):
@@ -298,7 +298,7 @@ def cmd_numbers(out):
     R['impact_head_delta_cm'] = round(float(np.linalg.norm(c_new - c_old)) * 100, 3)
     R['impact_strike_face_centre_delta_cm'] = round(float(np.linalg.norm(face_new - face_old)) * 100, 3)
     R['impact_face_normal_angle_deg'] = round(math.degrees(math.acos(max(-1, min(1, float(x_old @ x_new))))), 3)
-    for f in (14, 20):
+    for f in (14, 19):
         c, face, butt, x = hammer_pts('swing_hit', f)
         R['f%d_head_centre_m' % f] = c.round(4).tolist()
         R['f%d_head_rise_cm' % f] = round(float(c[2] - c_new[2]) * 100, 2)
@@ -337,13 +337,68 @@ def cmd_numbers(out):
     print(json.dumps(R, indent=1, default=float))
 
 
+WATCH = [('FARM_L', 'TORSO'), ('FARM_L', 'UARM_R'), ('FARM_L', 'HEAD'), ('HAND_L', 'HEAD'), ('HAND_L', 'TORSO'), ('HAND_L', 'UARM_R'), ('HAND_L', 'HAND_R'),
+         ('FARM_R', 'HEAD'), ('FARM_R', 'TORSO'), ('HAND_R', 'HEAD'), ('HAND_R', 'TORSO'), ('UARM_L', 'HEAD'), ('UARM_R', 'HEAD'),
+         ('UARM_L', 'TORSO'), ('UARM_R', 'TORSO'), ('FARM_R', 'UARM_L'), ('HAND_R', 'UARM_L')]
+
+
+def cmd_clipall(out, step):
+    """every frame of swing_hit / swing_ready / swing_raise: hammer inside the body (parity, grip zones and beard excluded) and the WATCH zone
+    pairs (every `step`-th frame and every key frame); values are cm, 'rest' = same pair in the rest pose"""
+    ham = rp.add_render_hammer(arm)
+    rest()
+    ham.hide_viewport = True
+    bv, vv = bvhs(None)
+    base = {}
+    for a, b in WATCH:
+        base[a + '|' + b] = round(depth(bv[a], vv[a], bv[b], vv[b]) * 100, 2) if len(bv[a].overlap(bv[b])) else 0.0
+    ham.hide_viewport = False
+    res = {'rest_baseline_cm': base, 'actions': {}}
+    for act in ('swing_hit', 'swing_ready', 'swing_raise'):
+        n = int(round(bpy.data.actions[act].frame_range[1])) + 1
+        hv_max, pair_max, per_frame = {}, {}, {}
+        for f in range(n):
+            use(act, f)
+            h = hammer_vs_body(ham)
+            for z, (cnt, dep) in h.items():
+                if z in ('BEARD',) or z.startswith(('HAND', 'FARM')):
+                    continue
+                if dep > hv_max.get(z, (0, -1))[1]:
+                    hv_max[z] = (f, dep)
+            if f % step == 0 or (act == 'swing_hit' and f in KEYS):
+                bv, vv = bvhs(None)
+                for a, b in WATCH:
+                    if len(bv[a].overlap(bv[b])):
+                        dep = round(depth(bv[a], vv[a], bv[b], vv[b]) * 100, 2)
+                        if dep > pair_max.get(a + '|' + b, (0, -1))[1]:
+                            pair_max[a + '|' + b] = (f, dep)
+                        if act == 'swing_hit' and f in KEYS:
+                            per_frame.setdefault(f, {})[a + '|' + b] = dep
+        res['actions'][act] = {'frames': n, 'hammer_in_body_max_(frame,cm)': hv_max, 'pair_max_(frame,cm)': pair_max, 'swing_hit_key_frames': per_frame}
+        print('CLIPALL', act, 'hammer', hv_max)
+        print('CLIPALL', act, 'pairs', pair_max)
+    json.dump(res, open(out, 'w'), indent=1)
+    print('BASELINE', base)
+    print('WROTE', out)
+
+
 if __name__ == '__main__':
     a = sys.argv[sys.argv.index('--') + 1:]
-    fr = [int(x) for x in a[2].split(',')] if len(a) > 2 else KEYS
+    fr = [int(x) for x in a[2].split(',')] if len(a) > 2 and a[0] != 'clipall' else KEYS
     if a[0] == 'render':
         cmd_render(a[1], fr)
     elif a[0] == 'clip':
         cmd_clip(a[1], fr)
+    elif a[0] == 'clipall':
+        cmd_clipall(a[1], int(a[2]) if len(a) > 2 else 4)
+    elif a[0] == 'quick':  # hammer vs body + WATCH pairs for the given swing_hit frames
+        h = rp.add_render_hammer(arm)
+        for f in fr:
+            use('swing_hit', f)
+            hb = {z: v for z, v in hammer_vs_body(h).items() if not z.startswith(('HAND', 'FARM')) and z != 'BEARD'}
+            bv, vv = bvhs(None)
+            pr = {x + '|' + y: round(depth(bv[x], vv[x], bv[y], vv[y]) * 100, 1) for x, y in WATCH if len(bv[x].overlap(bv[y])) and not x.startswith('UARM') }
+            print('QUICK f%d hammer %s pairs %s' % (f, hb, pr))
     elif a[0] == 'ham':  # quick: hammer vs body only
         h = rp.add_render_hammer(arm)
         for f in fr:
