@@ -49,9 +49,9 @@ function strataTexture() {
 // One deterministic look per player id: proportions, colours and (once the parts exist) beard and helmet.
 export function lookFor(id) {
  const r = k => hash(id + '|' + k), pick = (k, n) => Math.floor(r(k) * n);
- return { tint: pick('tint', TINTS.length), h: .92 + r('h') * .14, w: .9 + r('w') * .2, belly: .94 + r('belly') * .18, arm: .95 + r('arm') * .1, beard: pick('beard', 3), helmet: pick('helmet', 3), hair: pick('hair', HAIR.length), metal: pick('metal', METAL.length), rare: r('rare') > .93 };
+ return { tint: pick('tint', TINTS.length), skin: pick('skin', SKIN.length), h: .92 + r('h') * .14, w: .9 + r('w') * .2, belly: .94 + r('belly') * .18, arm: .95 + r('arm') * .1, beard: pick('beard', 3), helmet: pick('helmet', 3), hair: pick('hair', HAIR.length), metal: pick('metal', METAL.length), rare: r('rare') > .93 };
 }
-const HAIR = ['#6b3a1e', '#a8321f', '#2b2430', '#8d8a90', '#d9c9a0', '#4a3a28'], METAL = ['#ffffff', '#c9d3ff', '#ffd9a0', '#d8ffe6', '#ffc4c4'];
+const HAIR = ['#6b3a1e', '#a8321f', '#2b2430', '#8d8a90', '#d9c9a0', '#4a3a28'], METAL = ['#ffffff', '#c9d3ff', '#ffd9a0', '#d8ffe6', '#ffc4c4'], SKIN = ['#f0c8a8', '#e0a982', '#c68a62', '#9a6644', '#7a4f34'];
 
 // Hand-keyed clips from Blender (docs/BLENDER_SWING.md): per exercise a looping ready stance and a one-rep strike clip.
 // The clips also animate a `Hammer` bone; in the swing the hammer model copies that bone, so both fists stay on the handle.
@@ -78,9 +78,15 @@ class Gnome {
   this.id = id; this.root = new THREE.Group(); this.look = lookFor(id); this.model = cloneRig(src.scene); this.S = scale;
   this.model.scale.set(scale * this.look.w, scale * this.look.h, scale * this.look.w); this.root.add(this.model);
   const tint = new THREE.Color(TINTS[this.look.tint]), bones = {};
+  const partCol = { mat_skin: SKIN[this.look.skin], mat_hair: HAIR[this.look.hair], mat_metal: METAL[this.look.metal], mat_cloth: TINTS[this.look.tint] }; // modular parts (part_*): colour by material name
   this.model.traverse(o => {
    if (o.isBone) bones[o.name] = o;
-   if (o.isMesh) { o.frustumCulled = false; o.material = o.material.clone(); o.material.color.copy(tint); o.material.metalness = 0; o.material.roughness = .8 }
+   if (o.isMesh) {
+    o.frustumCulled = false; o.material = o.material.clone();
+    if (!o.name.startsWith('part_')) o.material.color.copy(tint); // the single textured mesh is multiplied by the tint
+    else if (partCol[o.material.name]) o.material.color.set(partCol[o.material.name]); // other part materials (leather, eyes) keep their own colour
+    o.material.metalness = 0; o.material.roughness = .8;
+   }
   });
   const hs = assets.hammer.scene.clone(true), hb = new THREE.Box3().setFromObject(hs), hsz = hb.getSize(new THREE.Vector3());
   hs.scale.setScalar(HAMMER_LEN * scale / Math.max(hsz.x, hsz.y, hsz.z)); hs.updateMatrixWorld(true); hs.position.sub(new THREE.Box3().setFromObject(hs).getCenter(new THREE.Vector3()));
@@ -309,10 +315,10 @@ export function create(canvas, opts = {}) {
  return { isBroken: () => broken, opts, setShift, setGnomes, setExercise, project, hit, setHp, breakRock, render, resize, dispose, gnomes, camera, THREE, scene, rock, slab, renderer };
 }
 
-// Head-and-shoulders portrait of a player's dwarf (one shared offscreen renderer, cached per tint).
+// Head-and-shoulders portrait of a player's dwarf (one shared offscreen renderer, cached per player).
 let pr = null; const prCache = new Map();
 export function portrait(id, px = 96) {
- const key = Math.floor(hash(id) * TINTS.length) + ':' + px; if (prCache.has(key)) return prCache.get(key);
+ const key = id + ':' + px; if (prCache.has(key)) return prCache.get(key);
  if (!pr) {
   const canvas = document.createElement('canvas'), renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping;
