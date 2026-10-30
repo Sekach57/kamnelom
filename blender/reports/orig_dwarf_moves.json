@@ -1,0 +1,118 @@
+{
+ "bytes": 274124,
+ "compressed": false,
+ "extensionsUsed": [],
+ "meshes": [],
+ "totalTriangles": 0,
+ "textures": [],
+ "materials": [],
+ "bytesByKind": {
+  "animation": 199584
+ },
+ "bones": [],
+ "bonesMissing": [
+  "Hips",
+  "Spine",
+  "Spine01",
+  "Spine02",
+  "neck",
+  "Head",
+  "head_end",
+  "headfront",
+  "LeftShoulder",
+  "LeftArm",
+  "LeftForeArm",
+  "LeftHand",
+  "RightShoulder",
+  "RightArm",
+  "RightForeArm",
+  "RightHand",
+  "LeftUpLeg",
+  "LeftLeg",
+  "LeftFoot",
+  "LeftToeBase",
+  "RightUpLeg",
+  "RightLeg",
+  "RightFoot",
+  "RightToeBase",
+  "Hammer"
+ ],
+ "bonesExtra": [],
+ "animations": [
+  {
+   "name": "idle_to_push_up",
+   "seconds": 2.5667
+  },
+  {
+   "name": "push_up_to_idle",
+   "seconds": 3.0667
+  },
+  {
+   "name": "Slow_Orc_Walk",
+   "seconds": 5.5
+  },
+  {
+   "name": "Male_Bend_Over_Pick_Up",
+   "seconds": 7.1667
+  }
+ ],
+ "clips": {
+  "idle_to_push_up": {
+   "frames": 63,
+   "seconds": 2.5667,
+   "hammerAnimated": false,
+   "hipsDriftXZ": 0.1408,
+   "hipsExcursionXZ": 0.1408,
+   "footSlideXZ": {
+    "LeftFoot": 0.0685,
+    "RightFoot": 0.0518
+   },
+   "checked": false,
+   "violations": []
+  },
+  "push_up_to_idle": {
+   "frames": 75,
+   "seconds": 3.0667,
+   "hammerAnimated": false,
+   "hipsDriftXZ": 0.1417,
+   "hipsExcursionXZ": 0.1884,
+   "footSlideXZ": {
+    "LeftFoot": 0.0571,
+    "RightFoot": 0.0856
+   },
+   "checked": false,
+   "violations": []
+  },
+  "Slow_Orc_Walk": {
+   "frames": 133,
+   "seconds": 5.5,
+   "hammerAnimated": false,
+   "hipsDriftXZ": 0.0,
+   "hipsExcursionXZ": 0.2377,
+   "footSlideXZ": {
+    "LeftFoot": 0.3444,
+    "RightFoot": 0.3746
+   },
+   "checked": false,
+   "violations": []
+  },
+  "Male_Bend_Over_Pick_Up": {
+   "frames": 173,
+   "seconds": 7.1667,
+   "hammerAnimated": false,
+   "hipsDriftXZ": 0.0002,
+   "hipsExcursionXZ": 0.112,
+   "footSlideXZ": {
+    "LeftFoot": 0.0204,
+    "RightFoot": 0.0195
+   },
+   "checked": false,
+   "violations": []
+  }
+ },
+ "invariants": {
+  "ok": true,
+  "violations": []
+ },
+ "file": "blender/originals/dwarf_moves.glb"
+}

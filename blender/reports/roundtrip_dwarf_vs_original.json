@@ -1,0 +1,231 @@
+{
+ "bytes": 4570276,
+ "compressed": false,
+ "extensionsUsed": [],
+ "meshes": [
+  {
+   "name": "char1",
+   "triangles": 12342,
+   "primitives": [
+    {
+     "material": "Material_0",
+     "morphTargets": 0
+    }
+   ],
+   "morphNames": null
+  }
+ ],
+ "totalTriangles": 12342,
+ "textures": [
+  {
+   "name": "Material_0_baseColor",
+   "mime": "image/jpeg",
+   "px": [
+    2048,
+    2048
+   ],
+   "bytes": 3236520
+  }
+ ],
+ "materials": [
+  "Material_0"
+ ],
+ "bytesByKind": {
+  "geometry": 1168652,
+  "textures": 3236520,
+  "skin": 1600,
+  "animation": 67036
+ },
+ "bones": [
+  "Hips",
+  "Hammer",
+  "LeftUpLeg",
+  "LeftLeg",
+  "LeftFoot",
+  "LeftToeBase",
+  "RightUpLeg",
+  "RightLeg",
+  "RightFoot",
+  "RightToeBase",
+  "Spine02",
+  "Spine01",
+  "Spine",
+  "LeftShoulder",
+  "LeftArm",
+  "LeftForeArm",
+  "LeftHand",
+  "neck",
+  "Head",
+  "head_end",
+  "headfront",
+  "RightShoulder",
+  "RightArm",
+  "RightForeArm",
+  "RightHand"
+ ],
+ "bonesMissing": [],
+ "bonesExtra": [],
+ "animations": [
+  {
+   "name": "pushup_hit",
+   "seconds": 1.1667
+  },
+  {
+   "name": "pushup_ready",
+   "seconds": 2.0
+  },
+  {
+   "name": "squat_hit",
+   "seconds": 1.0
+  },
+  {
+   "name": "squat_ready",
+   "seconds": 2.0
+  },
+  {
+   "name": "swing_hit",
+   "seconds": 1.1667
+  },
+  {
+   "name": "swing_ready",
+   "seconds": 2.0
+  }
+ ],
+ "clips": {
+  "pushup_hit": {
+   "frames": 29,
+   "seconds": 1.1667,
+   "hammerAnimated": true,
+   "hipsDriftXZ": 0.0,
+   "hipsExcursionXZ": 0.0247,
+   "footSlideXZ": {
+    "LeftFoot": 0.0,
+    "RightFoot": 0.0
+   },
+   "checked": true,
+   "violations": [],
+   "readyPoseDiffDeg": 0.0
+  },
+  "pushup_ready": {
+   "frames": 49,
+   "seconds": 2.0,
+   "hammerAnimated": true,
+   "hipsDriftXZ": 0.0,
+   "hipsExcursionXZ": 0.0009,
+   "footSlideXZ": {
+    "LeftFoot": 0.0,
+    "RightFoot": 0.0
+   },
+   "checked": true,
+   "violations": []
+  },
+  "squat_hit": {
+   "frames": 25,
+   "seconds": 1.0,
+   "hammerAnimated": true,
+   "hipsDriftXZ": 0.0,
+   "hipsExcursionXZ": 0.0796,
+   "footSlideXZ": {
+    "LeftFoot": 0.0,
+    "RightFoot": 0.0
+   },
+   "checked": true,
+   "violations": [],
+   "readyPoseDiffDeg": 0.0
+  },
+  "squat_ready": {
+   "frames": 49,
+   "seconds": 2.0,
+   "hammerAnimated": true,
+   "hipsDriftXZ": 0.0,
+   "hipsExcursionXZ": 0.0,
+   "footSlideXZ": {
+    "LeftFoot": 0.0,
+    "RightFoot": 0.0
+   },
+   "checked": true,
+   "violations": []
+  },
+  "swing_hit": {
+   "frames": 29,
+   "seconds": 1.1667,
+   "hammerAnimated": true,
+   "hipsDriftXZ": 0.0,
+   "hipsExcursionXZ": 0.0763,
+   "footSlideXZ": {
+    "LeftFoot": 0.0,
+    "RightFoot": 0.0
+   },
+   "checked": true,
+   "violations": [],
+   "readyPoseDiffDeg": 0.0
+  },
+  "swing_ready": {
+   "frames": 49,
+   "seconds": 2.0,
+   "hammerAnimated": true,
+   "hipsDriftXZ": 0.0,
+   "hipsExcursionXZ": 0.0,
+   "footSlideXZ": {
+    "LeftFoot": 0.0,
+    "RightFoot": 0.0
+   },
+   "checked": true,
+   "violations": []
+  }
+ },
+ "invariants": {
+  "ok": true,
+  "violations": []
+ },
+ "file": "tmp/roundtrip/dwarf.glb",
+ "compare": {
+  "clipsOnlyInOld": [],
+  "clipsOnlyInNew": [],
+  "clips": {
+   "pushup_hit": {
+    "framesOld": 29,
+    "framesNew": 29,
+    "maxJointPosDiff": 1e-05,
+    "maxLocalRotDiffDeg": 0.0001,
+    "identical": true
+   },
+   "pushup_ready": {
+    "framesOld": 49,
+    "framesNew": 49,
+    "maxJointPosDiff": 1e-05,
+    "maxLocalRotDiffDeg": 0.0001,
+    "identical": true
+   },
+   "squat_hit": {
+    "framesOld": 25,
+    "framesNew": 25,
+    "maxJointPosDiff": 1e-05,
+    "maxLocalRotDiffDeg": 0.0001,
+    "identical": true
+   },
+   "squat_ready": {
+    "framesOld": 49,
+    "framesNew": 49,
+    "maxJointPosDiff": 1e-05,
+    "maxLocalRotDiffDeg": 0.0001,
+    "identical": true
+   },
+   "swing_hit": {
+    "framesOld": 29,
+    "framesNew": 29,
+    "maxJointPosDiff": 1e-05,
+    "maxLocalRotDiffDeg": 0.0001,
+    "identical": true
+   },
+   "swing_ready": {
+    "framesOld": 49,
+    "framesNew": 49,
+    "maxJointPosDiff": 1e-05,
+    "maxLocalRotDiffDeg": 0.0001,
+    "identical": true
+   }
+  },
+  "allIdentical": true
+ }
+}

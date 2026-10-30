@@ -1,0 +1,24 @@
+== original dwarf
+info: No errors found.
+│ NODE_SKINNED_MESH_NON_ROOT │ Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh. │ 1        │ /nodes/25 │
+== original dwarf_moves
+info: No errors found.
+info: No warnings found.
+│ NODE_EMPTY │ Empty node encountered. │ 2        │ /nodes/0  │
+│ NODE_EMPTY │ Empty node encountered. │ 2        │ /nodes/1  │
+│ NODE_EMPTY │ Empty node encountered. │ 2        │ /nodes/4  │
+│ NODE_EMPTY │ Empty node encountered. │ 2        │ /nodes/8  │
+│ NODE_EMPTY │ Empty node encountered. │ 2        │ /nodes/15 │
+│ NODE_EMPTY │ Empty node encountered. │ 2        │ /nodes/19 │
+│ NODE_EMPTY │ Empty node encountered. │ 2        │ /nodes/24 │
+== original hammer
+info: No errors found.
+info: No warnings found.
+│ NODE_MATRIX_DEFAULT │ Do not specify default transform matrix. │ 2        │ /nodes/0/matrix │
+== original boulder
+info: No errors found.
+info: No warnings found.
+│ NODE_MATRIX_DEFAULT │ Do not specify default transform matrix. │ 2        │ /nodes/0/matrix │
+== roundtrip dwarf
+info: No errors found.
+│ NODE_SKINNED_MESH_NON_ROOT │ Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh. │ 1        │ /nodes/25 │

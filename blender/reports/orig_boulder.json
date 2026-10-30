@@ -1,0 +1,73 @@
+{
+ "bytes": 3379204,
+ "compressed": false,
+ "extensionsUsed": [],
+ "meshes": [
+  {
+   "name": null,
+   "triangles": 8152,
+   "primitives": [
+    {
+     "material": null,
+     "morphTargets": 0
+    }
+   ],
+   "morphNames": null
+  }
+ ],
+ "totalTriangles": 8152,
+ "textures": [
+  {
+   "name": null,
+   "mime": "image/jpeg",
+   "px": [
+    2048,
+    2048
+   ],
+   "bytes": 2832962
+  }
+ ],
+ "materials": [
+  null
+ ],
+ "bytesByKind": {
+  "geometry": 544384,
+  "textures": 2832962
+ },
+ "bones": [],
+ "bonesMissing": [
+  "Hips",
+  "Spine",
+  "Spine01",
+  "Spine02",
+  "neck",
+  "Head",
+  "head_end",
+  "headfront",
+  "LeftShoulder",
+  "LeftArm",
+  "LeftForeArm",
+  "LeftHand",
+  "RightShoulder",
+  "RightArm",
+  "RightForeArm",
+  "RightHand",
+  "LeftUpLeg",
+  "LeftLeg",
+  "LeftFoot",
+  "LeftToeBase",
+  "RightUpLeg",
+  "RightLeg",
+  "RightFoot",
+  "RightToeBase",
+  "Hammer"
+ ],
+ "bonesExtra": [],
+ "animations": [],
+ "clips": {},
+ "invariants": {
+  "ok": true,
+  "violations": []
+ },
+ "file": "blender/originals/boulder.glb"
+}
