@@ -103,6 +103,12 @@ class Gnome {
   this.setExercise('swing');
  }
  act(name) { return this.acts[name] || (this.acts[name] = this.mixer.clipAction(this.clips[name])) }
+ // Two actions of one strike clip, used in turn: a blow that starts before the last one has finished crossfades from the pose it
+ // interrupts (one action restarted in place would snap to frame 0).
+ strikeAction(name) {
+  const s = this.strikeActs || (this.strikeActs = {}), p = s[name] || (s[name] = [this.act(name), this.mixer.clipAction(this.clips[name].clone())]);
+  p.unshift(p.pop()); return p[0];
+ }
  // switch to a clip with a crossfade (the poses at clip joins mostly match, so it is a safety net)
  go(action, fade = .25) {
   action.enabled = true; action.setEffectiveWeight(1);
@@ -139,7 +145,7 @@ class Gnome {
   if (ex !== this.target) this.setExercise(ex);
   this.hitAt = now; this.hitDone = false; this.hitEx = ex;
   if (this.step || this.queue.length || ex !== this.stance) return; // busy walking: the blow only counts, it is not animated
-  const a = this.act(CLIPS[this.stance].strike); a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.paused = false;
+  const a = this.strikeAction(CLIPS[this.stance].strike); a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.paused = false;
   a.timeScale = IMPACT[this.stance] / TIMING[this.stance].hit; this.strikeAct = a; this.go(a, .12);
  }
  update(now, dt) {
