@@ -14,7 +14,7 @@
 
 ```bash
 git clone https://github.com/Sekach57/kamnelom.git /opt/dwarfgym
-cd /opt/dwarfgym && git checkout claude/serene-darwin-zg2ha6
+cd /opt/dwarfgym && git checkout main && git pull
 cd server && mkdir -p data && chown 1000:1000 data
 docker compose up -d --build
 curl http://127.0.0.1:4310/health
